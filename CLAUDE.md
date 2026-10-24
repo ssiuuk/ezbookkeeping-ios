@@ -58,5 +58,7 @@ and the Android app's `data/` package there.
   if `SwiftUI`/`Combine`/`Keychain`/`WebSession` are replaced by small stubs.
 - Use only APIs available in iOS 17, and add `.accessibilityIdentifier`s the UI test relies on when
   changing a screen it visits.
-- Pull requests from this repository publish `screenshots.zip` to the `ios-preview` release. There is no
-  signing yet; the README explains how to add Apple Developer signing and TestFlight.
+- Pull requests from this repository publish `screenshots.zip` to the `ios-preview` release.
+- `.github/workflows/testflight.yml` signs and uploads to TestFlight on a `v*` tag (version from the tag,
+  build number from the run number), on the Mac named by the `IOS_RELEASE_RUNNER` variable or
+  `macos-latest`. Its secrets are listed in the README's "TestFlight releases" section.

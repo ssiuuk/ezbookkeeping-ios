@@ -27,7 +27,7 @@ Family books, projects and merchants need the server from [ssiuuk/ezbookkeeping]
 
 ## Install
 
-There are no signed builds yet, so for now the app runs on a simulator or on your own iPhone from Xcode:
+Once TestFlight releases are set up (see [TestFlight releases](#testflight-releases)), install it with Apple's TestFlight app. Without them, the app runs on a simulator or on your own iPhone from Xcode:
 
 1. On a Mac with Xcode 15 or later, install [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 2. In this folder run `xcodegen generate`, then open `EzBookkeeping.xcodeproj`.
@@ -36,15 +36,45 @@ There are no signed builds yet, so for now the app runs on a simulator or on you
 
 The app allows plain `http://` addresses, since self-hosted servers often run on a home network without TLS.
 
-## Adding Apple Developer signing and TestFlight later
+## TestFlight releases
 
-When there is a paid Apple Developer account:
+`.github/workflows/testflight.yml` builds a signed app and uploads it to TestFlight whenever a tag `vX.Y.Z` is pushed or created on the GitHub releases page. The tag sets the version (`v1.2.0` → 1.2.0) and the workflow's run number sets the build number, which TestFlight needs to grow with every upload. It can also be started by hand from the Actions tab.
 
-1. In App Store Connect create the app with the bundle id `com.ssiuuk.ezbookkeeping`.
-2. Create an **App Store Connect API key** (Users and Access → Integrations) with the App Manager role, and an **Apple Distribution** certificate exported as a `.p12`.
-3. Add repository secrets: `APPLE_TEAM_ID`, `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (the key file's text), `DIST_CERT_P12_BASE64` and `DIST_CERT_PASSWORD`.
-4. Add a `release` job to `.github/workflows/build.yml` that imports the certificate into a temporary keychain, runs `xcodebuild archive` with `DEVELOPMENT_TEAM=$APPLE_TEAM_ID CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates` and the API key (`-authenticationKeyPath`, `-authenticationKeyID`, `-authenticationKeyIssuerID`), then `xcodebuild -exportArchive` with an `ExportOptions.plist` whose method is `app-store-connect`, and uploads the `.ipa` with `xcrun altool --upload-app --type ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"` (altool reads the key from `~/.appstoreconnect/private_keys/AuthKey_<id>.p8`). Run it on pushes to `main` or on published releases, like the Android app's `android-latest` release.
-5. Testers then install from TestFlight.
+### One-time setup
+
+**1. In App Store Connect** (with the paid developer account):
+
+- Create the app (Apps → **+** → New App) with the bundle id `com.ssiuuk.ezbookkeeping`. Register the bundle id first under Certificates, Identifiers & Profiles → Identifiers if it isn't listed.
+- Create an API key under Users and Access → Integrations → App Store Connect API, with the **App Manager** role. Download the `.p8` file (it can only be downloaded once) and note its Key ID and the Issuer ID shown above the list.
+
+**2. Signing files** (on any Mac signed in to the account):
+
+- An **Apple Distribution** certificate: Xcode → Settings → Accounts → your team → Manage Certificates → **+** → Apple Distribution. Then in Keychain Access, under My Certificates, right-click "Apple Distribution: …" → Export as a `.p12` with a password.
+- An **App Store** provisioning profile: Certificates, Identifiers & Profiles → Profiles → **+** → App Store Connect, for `com.ssiuuk.ezbookkeeping` and that certificate. Download the `.mobileprovision`. It and the certificate expire after a year; renew both and update the secrets then.
+
+**3. Repository secrets** (Settings → Secrets and variables → Actions → New repository secret):
+
+| Secret | Value |
+| --- | --- |
+| `APPLE_TEAM_ID` | the 10-character Team ID (Membership details on developer.apple.com) |
+| `ASC_KEY_ID` | the API key's Key ID |
+| `ASC_ISSUER_ID` | the Issuer ID |
+| `ASC_KEY_P8` | the whole text of the `.p8` file |
+| `DIST_CERT_P12_BASE64` | `base64 -i dist.p12 \| pbcopy`, then paste |
+| `DIST_CERT_PASSWORD` | the `.p12` password |
+| `PROVISIONING_PROFILE_BASE64` | `base64 -i profile.mobileprovision \| pbcopy`, then paste |
+
+**4. The Mac that builds it.** Without anything else the workflow uses GitHub's `macos-latest` runner. To build on your own Mac instead:
+
+- It needs macOS with a current Xcode (open it once and accept the licence) and [Homebrew](https://brew.sh) (the workflow installs XcodeGen if it's missing). iOS apps can only be built on macOS, so a Linux or Windows server can't do this; keep GitHub's runner then.
+- In this repository, Settings → Actions → Runners → **New self-hosted runner** → macOS, and run the commands it shows on the Mac. Run `./svc.sh install && ./svc.sh start` in the runner folder so it starts with the Mac.
+- Add a repository **variable** (Settings → Secrets and variables → Actions → Variables) `IOS_RELEASE_RUNNER` with the value `["self-hosted", "macOS"]`. Only this workflow uses it; pull request builds stay on GitHub's runners, so other people's pull requests never run on your Mac.
+
+The workflow signs with a keychain of its own and deletes it, the profile and the API key afterwards, so it doesn't touch the Mac's own keychain.
+
+### Releasing
+
+Create a release on the releases page with a new tag such as `v1.0.0` (or `git push origin v1.0.0`). When the workflow finishes, Apple takes 5 to 30 minutes to process the build; it then shows in App Store Connect → TestFlight. Add yourself and family under Internal Testing, and they install it with Apple's TestFlight app. The first build of a new version may ask for export compliance; the app already declares that it uses no non-exempt encryption.
 
 ## The server
 
