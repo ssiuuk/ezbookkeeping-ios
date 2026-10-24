@@ -1,0 +1,262 @@
+name: Build iOS App
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      server_ref:
+        description: 'Branch, tag or commit of ssiuuk/ezbookkeeping to test against (default: the one in SERVER_REF)'
+        required: false
+  # the server repository sends this when its main branch changes
+  repository_dispatch:
+    types:
+      - server-updated
+  # and every night, in case a server change was not announced
+  schedule:
+    - cron: '47 3 * * *'
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  SERVER_REPO: ssiuuk/ezbookkeeping
+
+jobs:
+  build:
+    # builds the app for the simulator and runs the unit tests; no signing is needed for either
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Show the Xcode version
+        run: xcodebuild -version
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Choose a simulator
+        id: simulator
+        run: |
+          udid="$(bash scripts/pick-simulator.sh)"
+          if [ -z "$udid" ]; then
+            xcrun simctl list devices available
+            echo "::error::No iPhone simulator is installed"
+            exit 1
+          fi
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          xcrun simctl list devices available | grep "$udid"
+
+      - name: Build
+        run: |
+          if ! xcodebuild build-for-testing \
+            -project EzBookkeeping.xcodeproj -scheme EzBookkeeping -configuration Debug \
+            -destination "id=${{ steps.simulator.outputs.udid }}" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" > "$RUNNER_TEMP/build.log" 2>&1; then
+            grep -E "error:" "$RUNNER_TEMP/build.log" | sort -u || true
+            tail -n 100 "$RUNNER_TEMP/build.log"
+            exit 1
+          fi
+          grep -E "warning:" "$RUNNER_TEMP/build.log" | sort -u | head -n 50 || true
+          tail -n 5 "$RUNNER_TEMP/build.log"
+
+      - name: Run the unit tests
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project EzBookkeeping.xcodeproj -scheme EzBookkeeping \
+            -destination "id=${{ steps.simulator.outputs.udid }}" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -only-testing:EzBookkeepingTests \
+            -resultBundlePath "$RUNNER_TEMP/UnitTests.xcresult"
+
+      - name: Package the simulator app
+        if: always()
+        run: |
+          app="$RUNNER_TEMP/DerivedData/Build/Products/Debug-iphonesimulator/EzBookkeeping.app"
+          if [ -d "$app" ]; then
+            ditto -c -k --keepParent "$app" "$RUNNER_TEMP/ezbookkeeping-ios-simulator.zip"
+          fi
+
+      - name: Upload the simulator app and build log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ezbookkeeping-ios-simulator
+          path: |
+            ${{ runner.temp }}/ezbookkeeping-ios-simulator.zip
+            ${{ runner.temp }}/build.log
+          if-no-files-found: ignore
+
+  screenshots:
+    # runs the app on a simulator against the ezBookkeeping server from SERVER_REPO and saves a screenshot of each screen
+    if: github.event_name != 'push'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Choose the server version
+        id: server
+        env:
+          INPUT_REF: ${{ github.event.inputs.server_ref }}
+          DISPATCH_REF: ${{ github.event.client_payload.sha }}
+        run: |
+          ref="${INPUT_REF:-$DISPATCH_REF}"
+          if [ -z "$ref" ]; then
+            # SERVER_REF names the server branch or commit this app version is meant for
+            ref="$(tr -d '[:space:]' < SERVER_REF)"
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "Testing against $SERVER_REPO at $ref" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Checkout the server
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ env.SERVER_REPO }}
+          ref: ${{ steps.server.outputs.ref }}
+          path: server
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Build and start the test server
+        # the fork's own server, so books, projects and merchants can be tested
+        working-directory: server
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          EBK_USER_ENABLE_REGISTER: 'true'
+        run: |
+          npm ci
+          npm run build
+          mkdir -p "$RUNNER_TEMP/server"
+          CGO_ENABLED=1 go build -o "$RUNNER_TEMP/server/ezbookkeeping" ezbookkeeping.go
+          cd "$RUNNER_TEMP/server"
+          mkdir -p conf data log storage
+          cp "$GITHUB_WORKSPACE/server/conf/ezbookkeeping.ini" conf/
+          ln -s "$GITHUB_WORKSPACE/server/dist" public
+          ./ezbookkeeping database update
+          nohup ./ezbookkeeping server run > server.log 2>&1 &
+
+      - name: Seed the test server
+        run: bash scripts/seed-test-server.sh http://localhost:8080
+
+      - name: Generate the Xcode project
+        run: |
+          xcodebuild -version
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Start a simulator
+        id: simulator
+        run: |
+          udid="$(bash scripts/pick-simulator.sh)"
+          if [ -z "$udid" ]; then
+            xcrun simctl list devices available
+            echo "::error::No iPhone simulator is installed"
+            exit 1
+          fi
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          xcrun simctl list devices available | grep "$udid"
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
+
+      - name: Run the walkthrough
+        id: walkthrough
+        env:
+          # xcodebuild hands TEST_RUNNER_ variables to the test, without the prefix
+          TEST_RUNNER_SERVER_URL: http://localhost:8080
+          TEST_RUNNER_SCREENSHOTS_DIR: ${{ runner.temp }}/screens
+        run: |
+          mkdir -p "$RUNNER_TEMP/screens"
+          set +e
+          xcodebuild test \
+            -project EzBookkeeping.xcodeproj -scheme EzBookkeeping -configuration Debug \
+            -destination "id=${{ steps.simulator.outputs.udid }}" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -only-testing:EzBookkeepingUITests \
+            -retry-tests-on-failure -test-iterations 2 \
+            -resultBundlePath "$RUNNER_TEMP/UITests.xcresult" > "$RUNNER_TEMP/screens/xcodebuild.log" 2>&1
+          status=$?
+          set -e
+          tail -n 80 "$RUNNER_TEMP/screens/xcodebuild.log"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Export screenshots from the test results
+        if: always()
+        run: |
+          # the test also writes PNGs straight to the screens folder; the attachments are a second copy
+          if [ -d "$RUNNER_TEMP/UITests.xcresult" ]; then
+            xcrun xcresulttool export attachments --path "$RUNNER_TEMP/UITests.xcresult" \
+              --output-path "$RUNNER_TEMP/screens/attachments" || echo "This Xcode can't export attachments"
+          fi
+          ls -la "$RUNNER_TEMP/screens" || true
+
+      - name: Show the test server log
+        if: always()
+        run: tail -n 200 "$RUNNER_TEMP/server/server.log" || true
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ezbookkeeping-ios-screenshots
+          path: ${{ runner.temp }}/screens
+
+      - name: Publish screenshots to the ios-preview release
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if ! gh release view ios-preview > /dev/null 2>&1; then
+            gh release create ios-preview --prerelease --target "${{ github.event.pull_request.head.sha }}" \
+              --title "iOS app (preview of an open pull request)" \
+              --notes "Screenshots of each screen from a pull request that isn't merged yet, taken on an iPhone simulator."
+          fi
+          cd "$RUNNER_TEMP/screens"
+          rm -f "$RUNNER_TEMP/screenshots.zip"
+          zip -qr "$RUNNER_TEMP/screenshots.zip" .
+          gh release upload ios-preview "$RUNNER_TEMP/screenshots.zip" --clobber
+
+      - name: Check the walkthrough passed
+        env:
+          STATUS: ${{ steps.walkthrough.outputs.status }}
+        run: |
+          grep -E "Test (Case|Suite).*(passed|failed)|\*\* TEST" "$RUNNER_TEMP/screens/xcodebuild.log" || true
+          test "$STATUS" = "0"
+
+      - name: Report a server change that breaks the app
+        # runs started by the server repository or the nightly check have no pull request to show the failure on
+        if: failure() && (github.event_name == 'repository_dispatch' || github.event_name == 'schedule')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SERVER_REF: ${{ steps.server.outputs.ref }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="The app test fails against the latest server"
+          body="The simulator walkthrough failed against $SERVER_REPO at \`$SERVER_REF\`: $RUN_URL"
+          number="$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number')"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
