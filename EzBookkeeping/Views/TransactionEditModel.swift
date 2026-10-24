@@ -1,0 +1,787 @@
+import Combine
+import Foundation
+
+/// Adds a new expense, income or transfer, or edits an existing one, in any of the user's books.
+/// Mirrors the Android app's TransactionEditActivity: same requests, same remembered accounts,
+/// and moving an existing transaction to another book.
+@MainActor
+final class TransactionEditModel: ObservableObject {
+    enum Field: Hashable {
+        case amount
+        case category
+        case account
+        case destinationAccount
+        case destinationAmount
+    }
+
+    enum EditAlert: Identifiable {
+        case message(String)
+        case loadFailed(String)
+        case moveIncomplete(String)
+        case confirmDelete
+
+        var id: String {
+            switch self {
+            case .message(let text): return "message-" + text
+            case .loadFailed(let text): return "load-" + text
+            case .moveIncomplete(let text): return "move-" + text
+            case .confirmDelete: return "delete"
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .message: return "Something went wrong"
+            case .loadFailed: return "Unable to reach the server"
+            case .moveIncomplete: return "Copied, but not moved"
+            case .confirmDelete: return "Delete this transaction?"
+            }
+        }
+
+        var text: String {
+            switch self {
+            case .message(let text), .loadFailed(let text), .moveIncomplete(let text):
+                return text
+            case .confirmDelete:
+                return "This can't be undone."
+            }
+        }
+    }
+
+    /// Choices from the previous book, looked up by name in the new one.
+    private struct Carried {
+        var categoryName: String?
+        var categoryParentName: String?
+        var account: Account?
+        var destinationAccount: Account?
+        var tagNames: [String] = []
+        var projectName: String?
+    }
+
+    // the server's first category icon and a neutral grey, for a group added from the app
+    static let newCategoryIcon = "1"
+    static let newCategoryColor = "8a8a8a"
+    static let maxNameLength = 64
+
+    let target: EditorTarget
+    let server: Server
+    /// The book an existing transaction is in; saving it in another book moves it there.
+    let originalBookId: String?
+
+    @Published private(set) var bookId: String?
+    @Published private(set) var books: [Book] = []
+    @Published private(set) var accounts: [Account] = []
+    @Published private(set) var categoriesByType: [Int: [TransactionCategory]] = [:]
+    @Published private(set) var tags: [Tag] = []
+    @Published private(set) var merchantsSupported = false
+    @Published private(set) var merchants: [String] = []
+    @Published private(set) var projectsSupported = false
+    @Published private(set) var projects: [Project] = []
+    @Published private(set) var original: TransactionRecord?
+
+    @Published private(set) var type = TransactionType.expense
+    @Published private(set) var category: TransactionCategory?
+    @Published private(set) var account: Account?
+    @Published private(set) var destinationAccount: Account?
+    @Published var tagIds: [String] = []
+    @Published var merchant = ""
+    @Published var projectId = "0"
+    @Published var time = Date()
+    @Published var amountText = ""
+    @Published var destinationAmountText = ""
+    @Published var comment = ""
+
+    @Published private(set) var loading = false
+    @Published private(set) var saving = false
+    @Published var errors: Set<Field> = []
+    @Published var alert: EditAlert?
+    /// Balance changes and read-only transactions open the web page instead.
+    @Published private(set) var webFallbackRoute: String?
+    /// Set when the screen should close; changedData says whether the lists need to load again.
+    @Published private(set) var finished = false
+    private(set) var changedData = false
+
+    private var recent: RecentChoices
+    private var accountChosen = false
+    private var destinationChosen = false
+    private var originalApplied = false
+    private var started = false
+    private var loadGeneration = 0
+    private var carried: Carried?
+    private let clientSessionId = UUID().uuidString
+
+    init(target: EditorTarget, server: Server) {
+        self.target = target
+        self.server = server
+        bookId = server.bookId
+        originalBookId = server.bookId
+        recent = RecentChoices(serverId: server.id, bookId: server.bookId)
+    }
+
+    var isEditing: Bool {
+        if case .edit = target {
+            return true
+        }
+
+        return false
+    }
+
+    private var transactionId: String? {
+        if case .edit(let id) = target {
+            return id
+        }
+
+        return nil
+    }
+
+    /// Talks to the book this transaction goes in, which can differ from the one selected in the app.
+    private func api() -> APIClient {
+        server.client(bookId: bookId)
+    }
+
+    private func originalBookAPI() -> APIClient {
+        server.client(bookId: originalBookId)
+    }
+
+    // MARK: - Loading
+
+    func start() async {
+        guard !started else {
+            return
+        }
+
+        started = true
+
+        Task {
+            await loadBooks()
+        }
+
+        await loadBookData()
+    }
+
+    private func loadBooks() async {
+        // servers without family books answer 404, and then there is nothing to choose
+        if let result = try? await server.client(bookId: nil).get("v1/books/list.json") {
+            books = Book.parseList(result)
+        }
+    }
+
+    /// Loads everything that belongs to the chosen book: accounts, categories, tags, merchants and projects.
+    func loadBookData() async {
+        loadGeneration += 1
+        let generation = loadGeneration
+        let client = api()
+        // the transaction itself is fetched once; switching books keeps it and reloads only the book's lists
+        let fetchId: String? = original == nil ? transactionId : nil
+        loading = true
+
+        async let accountsResult = capture { try await client.get("v1/accounts/list.json", query: [("visible_only", "true")]) }
+        async let categoriesResult = capture { try await client.get("v1/transaction/categories/list.json") }
+        async let tagsResult = capture { try await client.get("v1/transaction/tags/list.json") }
+        async let merchantsResult = capture { try await client.get("v1/transactions/merchants/list.json") }
+        async let projectsResult = capture { try await client.get("v1/projects/list.json") }
+        async let transactionResult = capture { () async throws -> Any? in
+            guard let fetchId else {
+                return nil
+            }
+
+            return try await client.get("v1/transactions/get.json", query: [
+                ("id", fetchId), ("trim_account", "false"), ("trim_category", "false"), ("trim_tag", "false"),
+            ])
+        }
+
+        let required = await (accountsResult, categoriesResult, transactionResult)
+        let extras = await (tagsResult, merchantsResult, projectsResult)
+
+        guard generation == loadGeneration else {
+            return
+        }
+
+        loading = false
+
+        for result in [required.0, required.1, required.2] {
+            if case .failure(let error) = result {
+                if !(error is CancellationError) {
+                    loadGeneration += 1
+                    alert = .loadFailed(error.localizedDescription)
+                }
+
+                return
+            }
+        }
+
+        if case .success(let value) = required.0 {
+            accounts = Account.selectable(Account.parseList(value))
+        }
+
+        if case .success(let value) = required.1 {
+            categoriesByType = TransactionCategory.parseAllTypes(value)
+        }
+
+        if fetchId != nil, case .success(let value) = required.2 {
+            original = TransactionRecord(json: JSONObject(value))
+        }
+
+        // tags are optional; merchants and projects only exist on this app's server
+        switch extras.0 {
+        case .success(let value): tags = Tag.parseList(value)
+        case .failure: tags = []
+        }
+
+        switch extras.1 {
+        case .success(let value):
+            merchantsSupported = true
+            merchants = Merchants.parseList(value)
+        case .failure:
+            merchantsSupported = false
+            merchants = []
+        }
+
+        switch extras.2 {
+        case .success(let value):
+            projectsSupported = true
+            projects = Project.parseList(value)
+        case .failure:
+            projectsSupported = false
+            projects = []
+        }
+
+        loaded()
+    }
+
+    private func loaded() {
+        if let original {
+            if !originalApplied {
+                originalApplied = true
+                fill(from: original)
+            }
+        } else {
+            if case .add(let accountId) = target {
+                account = findAccount(accountId)
+                accountChosen = account != nil
+            }
+
+            if account == nil {
+                applyRememberedAccounts(nil)
+
+                if let category {
+                    applyRememberedAccounts(category.id)
+                }
+            }
+        }
+
+        if let carried {
+            apply(carried)
+            self.carried = nil
+        }
+    }
+
+    private func fill(from original: TransactionRecord) {
+        if original.type == TransactionType.modifyBalance || !original.editable {
+            webFallbackRoute = "/transaction/detail?id=\(original.id)&type=\(original.type)"
+            return
+        }
+
+        type = original.type
+        amountText = Formats.editableAmount(original.sourceAmount)
+        account = findAccount(original.sourceAccountId)
+        destinationAccount = findAccount(original.destinationAccountId)
+        accountChosen = true
+        destinationChosen = true
+        category = findCategory(original.categoryId)
+        tagIds = original.tagIds
+        merchant = original.merchant
+        projectId = original.projectId.isEmpty ? "0" : original.projectId
+        time = original.date
+        comment = original.comment
+
+        if type == TransactionType.transfer {
+            destinationAmountText = Formats.editableAmount(original.destinationAmount)
+        }
+    }
+
+    /// Starts a new transaction with the accounts used last time for this category, or this kind of transaction.
+    private func applyRememberedAccounts(_ categoryId: String?) {
+        if !accountChosen {
+            var remembered = findAccount(recent.accountForCategory(categoryId, destination: false))
+
+            if remembered == nil && categoryId == nil {
+                remembered = findAccount(recent.accountForType(type, destination: false))
+                    ?? findAccount(server.user.string("defaultAccountId", "0"))
+                    ?? accounts.first
+            }
+
+            if let remembered {
+                account = remembered
+            }
+        }
+
+        if !destinationChosen && type == TransactionType.transfer {
+            var remembered = findAccount(recent.accountForCategory(categoryId, destination: true))
+
+            if remembered == nil && categoryId == nil {
+                remembered = findAccount(recent.accountForType(type, destination: true))
+            }
+
+            if let remembered {
+                destinationAccount = remembered
+            }
+        }
+    }
+
+    // MARK: - Lookups
+
+    var categoriesOfType: [TransactionCategory] {
+        categoriesByType[CategoryType.of(transactionType: type)] ?? []
+    }
+
+    func findCategory(_ id: String) -> TransactionCategory? {
+        for type in [CategoryType.income, CategoryType.expense, CategoryType.transfer] {
+            for parent in categoriesByType[type] ?? [] {
+                if let sub = parent.subCategories.first(where: { $0.id == id }) {
+                    return sub
+                }
+            }
+        }
+
+        return nil
+    }
+
+    private func findParentCategory(of subId: String) -> TransactionCategory? {
+        for type in [CategoryType.income, CategoryType.expense, CategoryType.transfer] {
+            if let parent = (categoriesByType[type] ?? []).first(where: { parent in parent.subCategories.contains { $0.id == subId } }) {
+                return parent
+            }
+        }
+
+        return nil
+    }
+
+    func findAccount(_ id: String?) -> Account? {
+        guard let id else {
+            return nil
+        }
+
+        return accounts.first { $0.id == id }
+    }
+
+    func findBook(_ id: String?) -> Book? {
+        books.first(where: { id == nil ? $0.isPersonal : $0.id == id })
+    }
+
+    func findProject(_ id: String) -> Project? {
+        id == "0" ? nil : projects.first(where: { $0.id == id })
+    }
+
+    // MARK: - What the form shows
+
+    var categoryText: String {
+        guard let category else {
+            return ""
+        }
+
+        if let parent = findParentCategory(of: category.id) {
+            return parent.name + " › " + category.name
+        }
+
+        return category.name
+    }
+
+    var bookText: String {
+        findBook(bookId)?.label ?? (bookId == nil ? "My book" : (server.bookName ?? ""))
+    }
+
+    var tagsText: String {
+        tags.filter { tagIds.contains($0.id) }.map(\.name).joined(separator: ", ")
+    }
+
+    var projectText: String {
+        findProject(projectId)?.name ?? ""
+    }
+
+    var canChooseBook: Bool {
+        books.count > 1
+    }
+
+    var showsProject: Bool {
+        projectsSupported && (!projects.isEmpty || findProject(projectId) != nil)
+    }
+
+    var showsMerchant: Bool {
+        merchantsSupported || !merchant.isEmpty
+    }
+
+    var showsDestinationAmount: Bool {
+        guard type == TransactionType.transfer, let account, let destinationAccount else {
+            return false
+        }
+
+        return account.currency != destinationAccount.currency
+    }
+
+    /// Changing the book of a filled-in form picks the same names in the new book, which is worth confirming.
+    var bookChangeNeedsConfirmation: Bool {
+        original != nil || category != nil || !tagIds.isEmpty || projectId != "0"
+    }
+
+    var pictureCount: Int {
+        original?.pictureIds.count ?? 0
+    }
+
+    // MARK: - Choices
+
+    func setType(_ newType: Int) {
+        guard newType != type else {
+            return
+        }
+
+        type = newType
+        category = nil
+
+        if original == nil {
+            applyRememberedAccounts(nil)
+        }
+    }
+
+    func choose(category: TransactionCategory) {
+        self.category = category
+        errors.remove(.category)
+
+        if original == nil {
+            applyRememberedAccounts(category.id)
+        }
+    }
+
+    func choose(account: Account, destination: Bool) {
+        if destination {
+            destinationAccount = account
+            destinationChosen = true
+            errors.remove(.destinationAccount)
+        } else {
+            self.account = account
+            accountChosen = true
+            errors.remove(.account)
+        }
+    }
+
+    /// Uses the spelling already in use, so one shop doesn't show up twice in reports.
+    func addMerchant(_ name: String) {
+        let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.maxNameLength))
+
+        guard !trimmed.isEmpty else {
+            return
+        }
+
+        merchant = merchants.first(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) ?? trimmed
+    }
+
+    func switchBook(to chosen: String?) {
+        guard chosen != bookId else {
+            return
+        }
+
+        var carried = Carried()
+
+        if let category {
+            carried.categoryName = category.name
+            carried.categoryParentName = categoriesOfType.first(where: { $0.id == category.parentId })?.name
+        }
+
+        carried.account = account
+        carried.destinationAccount = destinationAccount
+        carried.tagNames = tags.filter { tagIds.contains($0.id) }.map(\.name)
+        carried.projectName = findProject(projectId)?.name
+        self.carried = carried
+
+        bookId = chosen
+        recent = RecentChoices(serverId: server.id, bookId: chosen)
+        category = nil
+        account = nil
+        destinationAccount = nil
+        accountChosen = false
+        destinationChosen = false
+        tagIds = []
+        merchants = []
+        projectId = "0"
+        accounts = []
+        tags = []
+        projects = []
+        categoriesByType = [:]
+
+        Task {
+            await loadBookData()
+        }
+    }
+
+    /// Picks the category, accounts, tags and project with the same names in the new book.
+    private func apply(_ carried: Carried) {
+        if let name = carried.categoryName {
+            var sameName: TransactionCategory?
+
+            for parent in categoriesOfType {
+                for sub in parent.subCategories where !sub.hidden && sub.name.caseInsensitiveCompare(name) == .orderedSame {
+                    if let parentName = carried.categoryParentName, parent.name.caseInsensitiveCompare(parentName) == .orderedSame {
+                        category = sub
+                    } else if sameName == nil {
+                        sameName = sub
+                    }
+                }
+            }
+
+            if category == nil {
+                category = sameName
+            }
+        }
+
+        if let same = findCarriedAccount(carried.account) {
+            account = same
+            accountChosen = true
+        }
+
+        if let same = findCarriedAccount(carried.destinationAccount) {
+            destinationAccount = same
+            destinationChosen = true
+        }
+
+        for name in carried.tagNames {
+            if let tag = tags.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }), !tagIds.contains(tag.id) {
+                tagIds.append(tag.id)
+            }
+        }
+
+        if let projectName = carried.projectName,
+           let project = projects.first(where: { $0.name.caseInsensitiveCompare(projectName) == .orderedSame }) {
+            projectId = project.id
+        }
+    }
+
+    /// An account shared with both books keeps its id; otherwise one with the same name and currency.
+    private func findCarriedAccount(_ previous: Account?) -> Account? {
+        guard let previous else {
+            return nil
+        }
+
+        return findAccount(previous.id)
+            ?? accounts.first(where: { $0.name == previous.name && $0.currency == previous.currency })
+    }
+
+    // MARK: - Adding categories
+
+    /// Adds a category to a group, creating the group first when there is none yet, and selects it.
+    func addCategory(name: String, group: TransactionCategory?, newGroupName: String?) async {
+        loading = true
+
+        do {
+            var parent = group
+
+            if parent == nil, let newGroupName {
+                parent = try await postCategory(name: newGroupName, parentId: "0", icon: Self.newCategoryIcon, color: Self.newCategoryColor)
+            }
+
+            guard let parent else {
+                loading = false
+                return
+            }
+
+            let created = try await postCategory(name: name, parentId: parent.id, icon: parent.icon, color: parent.color)
+            let result = try await api().get("v1/transaction/categories/list.json")
+            categoriesByType = TransactionCategory.parseAllTypes(result)
+
+            if let added = findCategory(created.id) {
+                choose(category: added)
+            }
+        } catch {
+            if !(error is CancellationError) {
+                alert = .message(error.localizedDescription)
+            }
+        }
+
+        loading = false
+    }
+
+    private func postCategory(name: String, parentId: String, icon: String, color: String) async throws -> TransactionCategory {
+        let body: [String: Any] = [
+            "name": String(name.prefix(Self.maxNameLength)),
+            "type": CategoryType.of(transactionType: type),
+            "parentId": parentId,
+            "icon": icon.isEmpty ? Self.newCategoryIcon : icon,
+            "color": color.count == 6 ? color : Self.newCategoryColor,
+            "comment": "",
+            "clientSessionId": UUID().uuidString,
+        ]
+        let result = try await api().post("v1/transaction/categories/add.json", body: body)
+        return TransactionCategory(json: JSONObject(result))
+    }
+
+    // MARK: - Saving
+
+    func save() async {
+        guard !saving, !loading else {
+            return
+        }
+
+        var invalid = Set<Field>()
+        let amount = Formats.parseAmount(amountText)
+        let transfer = type == TransactionType.transfer
+        var destinationAmount = amount
+        var problem: String?
+
+        if amount == nil || amount! < 0 {
+            invalid.insert(.amount)
+        }
+
+        if category == nil {
+            invalid.insert(.category)
+        }
+
+        if account == nil {
+            invalid.insert(.account)
+        }
+
+        if transfer {
+            if destinationAccount == nil {
+                invalid.insert(.destinationAccount)
+            } else if let account, destinationAccount?.id == account.id {
+                invalid.insert(.destinationAccount)
+                problem = "Choose two different accounts"
+            }
+
+            if showsDestinationAmount {
+                destinationAmount = Formats.parseAmount(destinationAmountText)
+
+                if destinationAmount == nil || destinationAmount! < 0 {
+                    invalid.insert(.destinationAmount)
+                }
+            }
+        }
+
+        errors = invalid
+
+        if let problem {
+            alert = .message(problem)
+        }
+
+        guard invalid.isEmpty, let amount, let category, let account else {
+            return
+        }
+
+        let moving = original != nil && bookId != originalBookId
+        var body: [String: Any] = [:]
+
+        if let original, !moving {
+            body["id"] = original.id
+        } else {
+            body["clientSessionId"] = clientSessionId
+        }
+
+        body["type"] = type
+        body["categoryId"] = category.id
+        body["time"] = Int64(time.timeIntervalSince1970)
+        body["utcOffset"] = TimeZone.current.secondsFromGMT(for: time) / 60
+        body["sourceAccountId"] = account.id
+        body["destinationAccountId"] = transfer ? (destinationAccount?.id ?? "0") : "0"
+        body["sourceAmount"] = amount
+        body["destinationAmount"] = transfer ? (destinationAmount ?? amount) : Int64(0)
+        body["hideAmount"] = original?.hideAmount ?? false
+        body["tagIds"] = tagIds
+        // photos aren't edited in this app, so an edit keeps the ones the transaction has
+        body["pictureIds"] = moving ? [String]() : (original?.pictureIds ?? [])
+        body["projectId"] = projectId
+
+        if merchantsSupported || !merchant.isEmpty {
+            body["merchant"] = merchant
+        }
+
+        body["comment"] = comment.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let geoLocation = original?.geoLocation {
+            body["geoLocation"] = geoLocation
+        }
+
+        saving = true
+
+        if moving {
+            await moveToBook(body)
+            return
+        }
+
+        do {
+            try await api().post(original == nil ? "v1/transactions/add.json" : "v1/transactions/modify.json", body: body)
+            recent.remember(type: type, categoryId: category.id, accountId: account.id,
+                            destinationAccountId: transfer ? destinationAccount?.id : nil)
+            recent.rememberMerchant(merchant, categoryId: category.id)
+            finish()
+        } catch {
+            saving = false
+            alert = .message(error.localizedDescription)
+        }
+    }
+
+    /// Moves the transaction in one step on servers that can, or by adding it to the new book and deleting the old one.
+    private func moveToBook(_ body: [String: Any]) async {
+        guard let original, let sourceBook = findBook(originalBookId) else {
+            await addThenRemoveFromOriginalBook(body)
+            return
+        }
+
+        var moveBody = body
+        moveBody["id"] = original.id
+        moveBody["sourceBookId"] = sourceBook.id
+        moveBody["pictureIds"] = original.pictureIds
+
+        do {
+            try await api().post("v1/transactions/move/book.json", body: moveBody)
+            finish()
+        } catch let error as APIError where error.isNotFound {
+            // servers before the move request answer 404
+            await addThenRemoveFromOriginalBook(body)
+        } catch {
+            saving = false
+            alert = .message(error.localizedDescription)
+        }
+    }
+
+    private func addThenRemoveFromOriginalBook(_ body: [String: Any]) async {
+        guard let original else {
+            return
+        }
+
+        do {
+            try await api().post("v1/transactions/add.json", body: body)
+        } catch {
+            saving = false
+            alert = .message(error.localizedDescription)
+            return
+        }
+
+        do {
+            try await originalBookAPI().post("v1/transactions/delete.json", body: ["id": original.id])
+            finish()
+        } catch {
+            changedData = true
+            let from = findBook(originalBookId)?.label ?? "the other book"
+            alert = .moveIncomplete("The transaction was saved in the new book, but couldn't be removed from \(from) (\(error.localizedDescription)). Delete it there so it isn't counted twice.")
+        }
+    }
+
+    func delete() async {
+        guard let original else {
+            return
+        }
+
+        saving = true
+
+        do {
+            try await originalBookAPI().post("v1/transactions/delete.json", body: ["id": original.id])
+            finish()
+        } catch {
+            saving = false
+            alert = .message(error.localizedDescription)
+        }
+    }
+
+    func finish() {
+        changedData = true
+        finished = true
+    }
+}
