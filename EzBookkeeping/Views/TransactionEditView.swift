@@ -80,6 +80,17 @@ struct TransactionEditForm: View {
                         .accessibilityIdentifier("save_button")
                     }
                 }
+
+                // the decimal pad has no return key, so give the keyboard a way to close
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+
+                    Button("Done") {
+                        amountFocused = false
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                    .accessibilityIdentifier("keyboard_done")
+                }
             }
         }
         .interactiveDismissDisabled(model.saving)

@@ -418,11 +418,12 @@ final class ScreenshotTests: XCTestCase {
             }
         }
 
-        // a number pad has no return key; a short drag on the form dismisses the keyboard
-        let form = app.collectionViews.firstMatch
+        // the decimal pad has no return key; the editor adds a Done button above the keyboard.
+        // Never swipe down here: the editor is a sheet and a swipe closes it.
+        let done = app.buttons["keyboard_done"]
 
-        if form.exists {
-            form.swipeDown()
+        if done.exists && done.isHittable {
+            done.tap()
         }
     }
 
