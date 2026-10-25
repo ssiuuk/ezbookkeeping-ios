@@ -11,7 +11,7 @@ enum Sync {
     private static let sameTimeSeconds: Int64 = 120
     // passes over the outbox in one run, for changes that sending itself creates (a deletion of an add removed meanwhile)
     private static let maxPasses = 5
-    private static let compared = ["type", "categoryId", "sourceAccountId", "sourceAmount", "comment", "merchant", "projectId"]
+    nonisolated private static let compared = ["type", "categoryId", "sourceAccountId", "sourceAmount", "comment", "merchant", "projectId"]
 
     /// Called after changes were sent, held back or settled, so the screens can show the server's figures again.
     static var onChange: (@MainActor () -> Void)?
@@ -394,11 +394,11 @@ enum Sync {
 
     /// Whether two versions of a transaction say the same: what this app shows and edits, and what it sends without
     /// showing (photos, hidden amount, time zone and location). Either may be the server's JSON or what is sent.
-    static func same(_ a: [String: Any], _ b: [String: Any]) -> Bool {
+    nonisolated static func same(_ a: [String: Any], _ b: [String: Any]) -> Bool {
         same(a, b, exactTime: true)
     }
 
-    private static func same(_ a: [String: Any], _ b: [String: Any], exactTime: Bool) -> Bool {
+    nonisolated private static func same(_ a: [String: Any], _ b: [String: Any], exactTime: Bool) -> Bool {
         for key in compared where value(a, key) != value(b, key) {
             return false
         }
@@ -426,7 +426,7 @@ enum Sync {
     }
 
     /// The fields that differ, in the order the add form shows them.
-    static func differences(_ mine: [String: Any], _ servers: [String: Any]) -> [String] {
+    nonisolated static func differences(_ mine: [String: Any], _ servers: [String: Any]) -> [String] {
         var keys: [String] = []
         let transfer = JSONObject(mine).int("type") == TransactionType.transfer
 
@@ -456,14 +456,14 @@ enum Sync {
         return keys
     }
 
-    private static func value(_ json: [String: Any], _ key: String) -> String {
+    nonisolated private static func value(_ json: [String: Any], _ key: String) -> String {
         let fallback = key.hasSuffix("Id") || key.hasSuffix("Amount") ? "0" : ""
         let text = JSONObject(json).string(key, fallback).trimmingCharacters(in: .whitespacesAndNewlines)
         return text.isEmpty ? fallback : text
     }
 
     /// Photo ids, from what is sent ("pictureIds") or from the server's "pictures".
-    private static func pictureIds(_ json: [String: Any]) -> [String] {
+    nonisolated private static func pictureIds(_ json: [String: Any]) -> [String] {
         let object = JSONObject(json)
 
         if let sent = object.array("pictureIds") {
@@ -473,7 +473,7 @@ enum Sync {
         return object.objects("pictures").map { $0.string("pictureId") }.sorted()
     }
 
-    private static func geoLocation(_ json: [String: Any]) -> String {
+    nonisolated private static func geoLocation(_ json: [String: Any]) -> String {
         guard let location = JSONObject(json).object("geoLocation") else {
             return ""
         }
@@ -481,7 +481,7 @@ enum Sync {
         return "\(location.raw["latitude"] ?? 0),\(location.raw["longitude"] ?? 0)"
     }
 
-    private static func tagIds(_ json: [String: Any]) -> [String] {
+    nonisolated private static func tagIds(_ json: [String: Any]) -> [String] {
         (JSONObject(json).array("tagIds") ?? []).map { "\($0)" }.sorted()
     }
 }
