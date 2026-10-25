@@ -17,6 +17,18 @@ struct ServersView: View {
     @State private var confirmingSignOut: Server?
     @State private var confirmingRemove: Server?
 
+    private var removeMessage: String {
+        let name = confirmingRemove?.displayName ?? ""
+        var message = String(localized: "The app forgets \(name) and signs out of it. Your data stays on the server.")
+        let unsent = confirmingRemove.map { LocalStore.shared.changes(serverId: $0.id).count } ?? 0
+
+        if unsent > 0 {
+            message += "\n\n" + String(localized: "\(unsent) changes made on this phone haven't reached this server yet and will be lost.")
+        }
+
+        return message
+    }
+
     var body: some View {
         Form {
             if firstRun {
@@ -78,7 +90,7 @@ struct ServersView: View {
                 }
             }
         } message: {
-            Text("The app forgets \(confirmingRemove?.displayName ?? "") and signs out of it. Your data stays on the server.")
+            Text(removeMessage)
         }
     }
 

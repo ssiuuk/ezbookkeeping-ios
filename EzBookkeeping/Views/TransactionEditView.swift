@@ -341,9 +341,6 @@ struct TransactionEditForm: View {
             }
         }
         .scrollDismissesKeyboard(.immediately)
-        .onAppear {
-            TransactionEditModel.makeThumbnail = PhotoProcessing.thumbnail
-        }
         .disabled(model.saving)
         .overlay {
             if model.loading || model.saving {

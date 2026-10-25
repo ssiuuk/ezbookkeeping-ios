@@ -59,12 +59,17 @@ struct Server: Identifiable, Codable, Equatable {
 
     /// Calls the API of this server, in the selected book.
     func client() -> APIClient {
-        APIClient(baseURL: url, token: token, bookId: bookId)
+        APIClient(baseURL: url, token: token, bookId: bookId, cacheServerId: id)
     }
 
     /// Calls the API of this server in another book; nil is the user's own book.
     func client(bookId: String?) -> APIClient {
-        APIClient(baseURL: url, token: token, bookId: bookId)
+        APIClient(baseURL: url, token: token, bookId: bookId, cacheServerId: id)
+    }
+
+    /// Changes made on the phone are only sent with, and shown to, the user who made them.
+    var userName: String {
+        user.string("username")
     }
 
     /// Turns what the user typed into a server base address, or nil when it isn't one.

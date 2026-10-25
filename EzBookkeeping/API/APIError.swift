@@ -5,6 +5,8 @@ struct APIError: LocalizedError, Equatable {
     var httpStatus: Int
     var errorCode: Int
     var message: String
+    /// No answer came at all: no network, or the server is down. Screens then show the copy kept on the phone.
+    var unreachable = false
 
     var errorDescription: String? {
         message
@@ -21,6 +23,6 @@ struct APIError: LocalizedError, Equatable {
 
     static func unreachable(_ detail: String?) -> APIError {
         let suffix = detail.map { " (\($0))" } ?? ""
-        return APIError(httpStatus: 0, errorCode: 0, message: "Can't reach the server" + suffix)
+        return APIError(httpStatus: 0, errorCode: 0, message: "Can't reach the server" + suffix, unreachable: true)
     }
 }

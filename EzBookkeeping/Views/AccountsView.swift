@@ -9,9 +9,17 @@ struct AccountsView: View {
     @State private var loadedVersion = -1
     @State private var error: String?
     @State private var webPage: WebPage?
+    /// When the balances on screen were saved, while the server can't be reached.
+    @State private var offlineSince: Date?
 
     var body: some View {
         List {
+            if let offlineSince {
+                Section {
+                    OfflineNote(savedAt: offlineSince)
+                }
+            }
+
             if let error {
                 Section {
                     Text(error)
@@ -85,8 +93,9 @@ struct AccountsView: View {
         loading = true
 
         do {
-            let result = try await server.client().get("v1/accounts/list.json", query: [("visible_only", "true")])
-            accounts = Account.parseList(result)
+            let fetched = try await server.client().load("v1/accounts/list.json", query: [("visible_only", "true")])
+            accounts = Account.parseList(fetched.value)
+            offlineSince = fetched.savedAt
             loadedVersion = version
             error = nil
         } catch is CancellationError {

@@ -61,6 +61,8 @@ enum EditorTarget: Identifiable {
     case edit(id: String)
     /// A purchase from the To review list, opened in the add form.
     case review(id: String)
+    /// A transaction saved on the phone and not sent to the server yet.
+    case change(id: Int)
 
     var id: String {
         switch self {
@@ -70,6 +72,8 @@ enum EditorTarget: Identifiable {
             return "edit-" + id
         case .review(let id):
             return "review-" + id
+        case .change(let id):
+            return "change-" + String(id)
         }
     }
 }

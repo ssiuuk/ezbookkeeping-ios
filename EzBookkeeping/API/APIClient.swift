@@ -11,6 +11,8 @@ struct APIClient {
     var token: String?
     /// The family book to work in; nil is the user's own book.
     var bookId: String?
+    /// The saved server whose answers `load` keeps on the phone; nil keeps none (sign-in, server checks).
+    var cacheServerId: String?
 
     /// Called on the main actor when the server rejects the saved sign-in (HTTP 401).
     static var onUnauthorized: (@MainActor (_ baseURL: String, _ token: String) -> Void)?
@@ -29,20 +31,48 @@ struct APIClient {
 
     /// GETs `path` (relative to /api/, for example "v1/accounts/list.json") and returns the "result" value.
     func get(_ path: String, query: [(String, String?)] = []) async throws -> Any? {
-        var fullPath = path
+        try await send(method: "GET", path: Self.fullPath(path, query), body: nil)
+    }
+
+    /// A GET answer; savedAt is set when it is the copy kept on the phone because the server can't be reached.
+    struct Fetched {
+        var value: Any?
+        var savedAt: Date?
+    }
+
+    /// GETs like `get`, keeps the answer on the phone, and answers with that copy while the server can't be reached.
+    /// cacheAs names the copy instead of the address, for queries that change with the day.
+    func load(_ path: String, query: [(String, String?)] = [], cacheAs: String? = nil) async throws -> Fetched {
+        let fullPath = Self.fullPath(path, query)
+        let key = cacheAs ?? fullPath
+
+        do {
+            let value = try await send(method: "GET", path: fullPath, body: nil)
+
+            if let cacheServerId {
+                LocalStore.shared.putCached(serverId: cacheServerId, bookId: bookId, path: key, result: value)
+            }
+
+            return Fetched(value: value, savedAt: nil)
+        } catch let error as APIError where error.unreachable {
+            if let cacheServerId, let cached = LocalStore.shared.getCached(serverId: cacheServerId, bookId: bookId, path: key) {
+                return Fetched(value: cached.result, savedAt: cached.savedAt)
+            }
+
+            throw error
+        }
+    }
+
+    private static func fullPath(_ path: String, _ query: [(String, String?)]) -> String {
         var pairs: [String] = []
 
         for (key, value) in query {
             if let value {
-                pairs.append(Self.encode(key) + "=" + Self.encode(value))
+                pairs.append(encode(key) + "=" + encode(value))
             }
         }
 
-        if !pairs.isEmpty {
-            fullPath += "?" + pairs.joined(separator: "&")
-        }
-
-        return try await send(method: "GET", path: fullPath, body: nil)
+        return pairs.isEmpty ? path : path + "?" + pairs.joined(separator: "&")
     }
 
     /// POSTs a JSON body and returns the "result" value.
@@ -237,6 +267,15 @@ struct APIClient {
         }
 
         return info
+    }
+}
+
+/// Like `capture`, for `load`, which also says whether the answer is the copy kept on the phone.
+func fetch(_ operation: @escaping () async throws -> APIClient.Fetched) async -> Result<APIClient.Fetched, Error> {
+    do {
+        return .success(try await operation())
+    } catch {
+        return .failure(error)
     }
 }
 

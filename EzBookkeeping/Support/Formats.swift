@@ -105,6 +105,11 @@ enum Formats {
         return formatter.string(from: date)
     }
 
+    /// When a copy kept on the phone was saved: the time today, otherwise the day and time.
+    static func savedAt(_ date: Date, now: Date = Date()) -> String {
+        Calendar.current.isDate(date, inSameDayAs: now) ? time(date) : dayHeader(date, now: now) + " " + time(date)
+    }
+
     /// The first character of a name, for the round avatar in lists.
     static func initial(_ name: String) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)

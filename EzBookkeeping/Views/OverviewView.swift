@@ -18,11 +18,22 @@ struct OverviewView: View {
     @State private var pending: [PendingPurchases.Item] = []
     /// The purchase just dismissed, which Undo puts back.
     @State private var dismissed: PendingPurchases.Item?
+    /// Transactions saved on the phone that the server hasn't taken yet.
+    @State private var changes: [LocalStore.Change] = []
+    @State private var decision: ChangeDecision?
+    /// When the figures on screen were saved, while the server can't be reached; .distantPast when none were.
+    @State private var offlineSince: Date?
 
     private static let recentCount = 5
 
     var body: some View {
         List {
+            if let offlineSince {
+                Section {
+                    OfflineNote(savedAt: offlineSince == .distantPast ? nil : offlineSince)
+                }
+            }
+
             if let error {
                 Section {
                     Text(error)
@@ -35,6 +46,7 @@ struct OverviewView: View {
                 }
             }
 
+            syncSection
             reviewSection
             monthSection
             periodsSection
@@ -75,11 +87,61 @@ struct OverviewView: View {
         .task(id: appState.pendingVersion) {
             pending = PendingPurchases.list()
         }
+        .task(id: appState.syncVersion) {
+            changes = appState.activeServer.map(Sync.changes) ?? []
+        }
+        .alert(decision?.title ?? "", isPresented: Binding(
+            get: { decision != nil },
+            set: { if !$0 { decision = nil } }
+        ), presenting: decision) { decision in
+            ForEach(decision.actions) { action in
+                Button(action.title, role: action.role) {
+                    action.run()
+                }
+            }
+
+            Button("Cancel", role: .cancel) {}
+        } message: { decision in
+            Text(decision.message)
+        }
         .onChange(of: scenePhase) { _, phase in
             // an Apple Pay automation may have added a purchase while the app was in the background
             if phase == .active {
                 appState.pendingChanged()
             }
+        }
+    }
+
+    /// Transactions saved on this phone that the server hasn't taken yet; ones that need a decision say so.
+    @ViewBuilder
+    private var syncSection: some View {
+        if !changes.isEmpty {
+            Section {
+                ForEach(changes) { change in
+                    Button {
+                        open(change)
+                    } label: {
+                        ChangeRow(change: change)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("change")
+                }
+            } header: {
+                Text(changes.count == 1 ? "1 transaction not on the server yet" : "\(changes.count) transactions not on the server yet")
+            } footer: {
+                Text(changes.contains { !$0.isWaiting }
+                     ? "Tap the ones marked in red to choose what to keep."
+                     : "They are sent by themselves as soon as the server answers.")
+            }
+        }
+    }
+
+    /// Opens a waiting change for editing, or asks how to settle one the server didn't take.
+    private func open(_ change: LocalStore.Change) {
+        if let question = ChangeDecision.forChange(change, edit: { editor = .change(id: change.id) }) {
+            decision = question
+        } else {
+            editor = .change(id: change.id)
         }
     }
 
@@ -261,10 +323,11 @@ struct OverviewView: View {
         loading = true
         error = nil
 
-        async let amountsResult = capture { try await client.get("v1/transactions/amounts.json", query: [("query", query), ("use_transaction_timezone", "false")]) }
-        async let accountsResult = capture { try await client.get("v1/accounts/list.json", query: [("visible_only", "true")]) }
-        async let ratesResult = capture { try await client.get("v1/exchange_rates/latest.json") }
-        async let recentResult = capture { try await client.get("v1/transactions/list.json", query: [("count", String(Self.recentCount)), ("page", "1"), ("max_time", "0"), ("min_time", "0")]) }
+        // the periods' dates change every day, so their copy on the phone goes by name
+        async let amountsResult = fetch { try await client.load("v1/transactions/amounts.json", query: [("query", query), ("use_transaction_timezone", "false")], cacheAs: "overview-amounts") }
+        async let accountsResult = fetch { try await client.load("v1/accounts/list.json", query: [("visible_only", "true")]) }
+        async let ratesResult = fetch { try await client.load("v1/exchange_rates/latest.json") }
+        async let recentResult = fetch { try await client.load("v1/transactions/list.json", query: [("count", String(Self.recentCount)), ("page", "1"), ("max_time", "0"), ("min_time", "0")]) }
 
         let results = await (amountsResult, accountsResult, ratesResult, recentResult)
         loading = false
@@ -274,26 +337,51 @@ struct OverviewView: View {
         }
 
         var failure: Error?
+        var savedAt: Date?
+        var unreachable = false
+
+        func note(_ fetched: APIClient.Fetched) {
+            if let saved = fetched.savedAt {
+                savedAt = min(savedAt ?? saved, saved)
+            }
+        }
+
+        func failed(_ error: Error) {
+            if let apiError = error as? APIError, apiError.unreachable {
+                // the note at the top already says the server can't be reached
+                unreachable = true
+            } else {
+                failure = failure ?? error
+            }
+        }
 
         switch results.0 {
-        case .success(let value): amounts = PeriodAmounts.parseAll(value)
-        case .failure(let error): failure = error
+        case .success(let fetched):
+            note(fetched)
+            amounts = PeriodAmounts.parseAll(fetched.value)
+        case .failure(let error): failed(error)
         }
 
         switch results.1 {
-        case .success(let value): accounts = Account.parseList(value)
-        case .failure(let error): failure = failure ?? error
+        case .success(let fetched):
+            note(fetched)
+            accounts = Account.parseList(fetched.value)
+        case .failure(let error): failed(error)
         }
 
         // without rates, other currencies are listed separately
-        if case .success(let value) = results.2 {
-            rates = ExchangeRates.parse(value)
+        if case .success(let fetched) = results.2 {
+            rates = ExchangeRates.parse(fetched.value)
         }
 
         switch results.3 {
-        case .success(let value): recent = TransactionPage.parse(value).items
-        case .failure(let error): failure = failure ?? error
+        case .success(let fetched):
+            note(fetched)
+            recent = TransactionPage.parse(fetched.value).items
+        case .failure(let error): failed(error)
         }
+
+        offlineSince = savedAt ?? (unreachable ? .distantPast : nil)
 
         if let failure, !(failure is CancellationError) {
             error = failure.localizedDescription

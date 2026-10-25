@@ -139,15 +139,50 @@ final class TransactionEditModel: ObservableObject {
     init(target: EditorTarget, server: Server) {
         self.target = target
         self.server = server
-        bookId = server.bookId
-        originalBookId = server.bookId
+
         if case .review(let id) = target {
             pending = PendingPurchases.get(id)
         } else {
             pending = nil
         }
 
-        recent = RecentChoices(serverId: server.id, bookId: server.bookId)
+        // a transaction saved on the phone and not sent yet is edited in its phone version, which is newer
+        var queued: LocalStore.Change?
+        var serverTransactionId: String?
+
+        switch target {
+        case .change(let id):
+            if let change = LocalStore.shared.change(id) {
+                queued = change
+                serverTransactionId = change.transactionId
+            } else {
+                // sent meanwhile: edit what the server made of it
+                serverTransactionId = LocalStore.shared.sent(id)?.transactionId
+            }
+        case .edit(let id):
+            queued = Sync.changeFor(server, transactionId: id)
+            serverTransactionId = id
+        default:
+            break
+        }
+
+        if queued?.kind == .delete {
+            // deleted on this phone: show the server's version, and saving it takes the place of the deletion
+            queued = nil
+        }
+
+        self.queued = queued
+        transactionId = serverTransactionId
+        let book = queued.map { $0.bookId } ?? server.bookId
+        bookId = book
+        originalBookId = book
+        recent = RecentChoices(serverId: server.id, bookId: book)
+
+        if let queued {
+            var record = TransactionRecord(json: JSONObject(queued.body))
+            record.id = queued.transactionId ?? ""
+            original = record
+        }
 
         if let pending {
             type = pending.refund ? TransactionType.income : TransactionType.expense
@@ -158,20 +193,15 @@ final class TransactionEditModel: ObservableObject {
     }
 
     var isEditing: Bool {
-        if case .edit = target {
-            return true
-        }
-
-        return false
+        original != nil || transactionId != nil
     }
 
-    private var transactionId: String? {
-        if case .edit(let id) = target {
-            return id
-        }
-
-        return nil
-    }
+    /// The server's id of the transaction being edited; nil for a new one, or one added on the phone and not sent yet.
+    private let transactionId: String?
+    /// A change saved on this phone and not sent yet, which this form edits instead of the server's version.
+    private(set) var queued: LocalStore.Change?
+    /// The server's version as it came, kept with a change saved on the phone to notice later edits on the server.
+    private var originalJSON: [String: Any]?
 
     /// Talks to the book this transaction goes in, which can differ from the one selected in the app.
     private func api() -> APIClient {
@@ -207,8 +237,8 @@ final class TransactionEditModel: ObservableObject {
 
     private func loadBooks() async {
         // servers without family books answer 404, and then there is nothing to choose
-        if let result = try? await server.client(bookId: nil).get("v1/books/list.json") {
-            books = Book.parseList(result)
+        if let result = try? await server.client(bookId: nil).load("v1/books/list.json") {
+            books = Book.parseList(result.value)
         }
     }
 
@@ -221,19 +251,20 @@ final class TransactionEditModel: ObservableObject {
         let fetchId: String? = original == nil ? transactionId : nil
         loading = true
 
-        async let accountsResult = capture { try await client.get("v1/accounts/list.json", query: [("visible_only", "true")]) }
-        async let categoriesResult = capture { try await client.get("v1/transaction/categories/list.json") }
-        async let tagsResult = capture { try await client.get("v1/transaction/tags/list.json") }
-        async let merchantsResult = capture { try await client.get("v1/transactions/merchants/list.json") }
-        async let projectsResult = capture { try await client.get("v1/projects/list.json") }
+        // while the server can't be reached, the lists it sent last time are used
+        async let accountsResult = capture { try await client.load("v1/accounts/list.json", query: [("visible_only", "true")]).value }
+        async let categoriesResult = capture { try await client.load("v1/transaction/categories/list.json").value }
+        async let tagsResult = capture { try await client.load("v1/transaction/tags/list.json").value }
+        async let merchantsResult = capture { try await client.load("v1/transactions/merchants/list.json").value }
+        async let projectsResult = capture { try await client.load("v1/projects/list.json").value }
         async let transactionResult = capture { () async throws -> Any? in
             guard let fetchId else {
                 return nil
             }
 
-            return try await client.get("v1/transactions/get.json", query: [
+            return try await client.load("v1/transactions/get.json", query: [
                 ("id", fetchId), ("trim_account", "false"), ("trim_category", "false"), ("trim_tag", "false"),
-            ])
+            ]).value
         }
 
         let required = await (accountsResult, categoriesResult, transactionResult)
@@ -266,6 +297,7 @@ final class TransactionEditModel: ObservableObject {
 
         if fetchId != nil, case .success(let value) = required.2 {
             original = TransactionRecord(json: JSONObject(value))
+            originalJSON = value as? [String: Any]
         }
 
         // tags are optional; merchants and projects only exist on this app's server
@@ -804,13 +836,16 @@ final class TransactionEditModel: ObservableObject {
             return
         }
 
-        let moving = original != nil && bookId != originalBookId
+        // a transaction added on the phone and not sent yet simply goes to the other book when it is sent
+        let moving = original != nil && bookId != originalBookId && queued?.kind != .add
         var body: [String: Any] = [:]
 
-        if let original, !moving {
+        if let original, !original.id.isEmpty, !moving {
             body["id"] = original.id
         } else {
-            body["clientSessionId"] = clientSessionId
+            // the phone version of an add keeps its id, so the server can tell a repeat
+            body["clientSessionId"] = queued.flatMap { JSONObject($0.body).has("clientSessionId") ? JSONObject($0.body).string("clientSessionId") : nil }
+                ?? clientSessionId
         }
 
         body["type"] = type
@@ -837,6 +872,11 @@ final class TransactionEditModel: ObservableObject {
             body["geoLocation"] = geoLocation
         }
 
+        if moving && !Connectivity.shared.isOnline {
+            alert = .message("Moving to another book needs the server. Try again when it can be reached.")
+            return
+        }
+
         saving = true
 
         if moving {
@@ -844,24 +884,71 @@ final class TransactionEditModel: ObservableObject {
             return
         }
 
+        let labels = Self.labels(category: category, account: account, destination: transfer ? destinationAccount : nil)
+
+        if queued != nil || !Connectivity.shared.isOnline {
+            saveOnPhone(body, labels: labels)
+            return
+        }
+
         do {
             try await api().post(original == nil ? "v1/transactions/add.json" : "v1/transactions/modify.json", body: body)
-            recent.remember(type: type, categoryId: category.id, accountId: account.id,
-                            destinationAccountId: transfer ? destinationAccount?.id : nil)
-            recent.rememberMerchant(merchant, categoryId: category.id, accountId: account.id)
 
-            if let pending {
-                recent.rememberCard(pending.cardKey, accountId: account.id)
-                // the automation keeps using its own name for the shop even if it was renamed here
-                recent.rememberMerchant(pending.merchant, categoryId: category.id, accountId: account.id)
-                PendingPurchases.remove(pending.id)
+            if let original, let deletion = Sync.changeFor(server, transactionId: original.id), deletion.kind == .delete {
+                // it was deleted on the phone earlier; saving it again keeps it
+                Sync.keepServers(deletion)
             }
 
+            rememberChoices(category: category, account: account)
             finish()
+        } catch let error as APIError where error.unreachable {
+            saveOnPhone(body, labels: labels)
         } catch {
             saving = false
             alert = .message(error.localizedDescription)
         }
+    }
+
+    private func rememberChoices(category: TransactionCategory, account: Account) {
+        recent.remember(type: type, categoryId: category.id, accountId: account.id,
+                        destinationAccountId: type == TransactionType.transfer ? destinationAccount?.id : nil)
+        recent.rememberMerchant(merchant, categoryId: category.id, accountId: account.id)
+
+        if let pending {
+            recent.rememberCard(pending.cardKey, accountId: account.id)
+            // the automation keeps using its own name for the shop even if it was renamed here
+            recent.rememberMerchant(pending.merchant, categoryId: category.id, accountId: account.id)
+            PendingPurchases.remove(pending.id)
+        }
+    }
+
+    /// Keeps the transaction on this phone while the server can't be reached; it is sent once it answers again.
+    private func saveOnPhone(_ body: [String: Any], labels: [String: String]) {
+        if var queued {
+            // also when it was sent while this form was open: then it changes what the server made of it
+            queued.bookId = bookId
+            Sync.saveEdit(server, change: queued, body: body, labels: labels)
+        } else {
+            Sync.queue(server, bookId: bookId, kind: original == nil ? .add : .modify, transactionId: original?.id,
+                       body: body, base: originalJSON, labels: labels)
+        }
+
+        if let category, let account {
+            rememberChoices(category: category, account: account)
+        }
+
+        finish()
+    }
+
+    /// Names to show a change saved on the phone by, since the lists of accounts may be out of reach later.
+    static func labels(category: TransactionCategory?, account: Account?, destination: Account?) -> [String: String] {
+        [
+            "category": category?.name ?? "",
+            "account": account?.name ?? "",
+            "currency": account?.currency ?? "",
+            "destinationAccount": destination?.name ?? "",
+            "destinationCurrency": destination?.currency ?? "",
+        ]
     }
 
     /// Moves the transaction in one step on servers that can, or by adding it to the new book and deleting the old one.
@@ -916,15 +1003,35 @@ final class TransactionEditModel: ObservableObject {
             return
         }
 
+        if let queued {
+            // an add is simply dropped; one the server has is deleted there once it can be reached
+            Sync.deleteEdit(server, change: queued)
+            finish()
+            return
+        }
+
+        if !Connectivity.shared.isOnline {
+            deleteOnPhone(original)
+            return
+        }
+
         saving = true
 
         do {
             try await originalBookAPI().post("v1/transactions/delete.json", body: ["id": original.id])
             finish()
+        } catch let error as APIError where error.unreachable {
+            deleteOnPhone(original)
         } catch {
             saving = false
             alert = .message(error.localizedDescription)
         }
+    }
+
+    private func deleteOnPhone(_ original: TransactionRecord) {
+        Sync.queue(server, bookId: originalBookId, kind: .delete, transactionId: original.id, body: ["id": original.id],
+                   base: originalJSON, labels: Self.labels(category: category, account: account, destination: destinationAccount))
+        finish()
     }
 
     /// Takes a purchase off the To review list without saving it.

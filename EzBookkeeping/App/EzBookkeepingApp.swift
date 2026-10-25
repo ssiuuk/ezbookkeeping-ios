@@ -5,11 +5,14 @@ import UIKit
 struct EzBookkeepingApp: App {
     @StateObject private var appState = AppState()
     @AppStorage(AppState.themeKey) private var theme = ThemeChoice.system.rawValue
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         if ProcessInfo.processInfo.arguments.contains("-disableAnimations") {
             UIView.setAnimationsEnabled(false)
         }
+
+        TransactionEditModel.makeThumbnail = PhotoProcessing.thumbnail
     }
 
     var body: some Scene {
@@ -17,6 +20,21 @@ struct EzBookkeepingApp: App {
             RootView()
                 .environmentObject(appState)
                 .preferredColorScheme(ThemeChoice(rawValue: theme)?.colorScheme)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .active:
+                Task {
+                    await appState.sendWaiting()
+                }
+            case .background:
+                AppState.scheduleBackgroundSync()
+            default:
+                break
+            }
+        }
+        .backgroundTask(.appRefresh(AppState.syncTaskId)) {
+            await AppState.sendWaitingInBackground()
         }
     }
 }

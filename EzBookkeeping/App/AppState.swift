@@ -1,3 +1,4 @@
+import BackgroundTasks
 import Foundation
 import SwiftUI
 
@@ -21,6 +22,13 @@ final class AppState: ObservableObject {
     @Published var notice: String?
     /// Bumped when the To review list changes, which an automation can do while the app is open.
     @Published private(set) var pendingVersion = 0
+    /// Bumped when the transactions saved on the phone change: saved, sent, held back or settled.
+    @Published private(set) var syncVersion = 0
+
+    /// The background refresh that sends changes saved on the phone while the app isn't open.
+    static let syncTaskId = "com.ssiuuk.ezbookkeeping.sync"
+    private var retryTask: Task<Void, Never>?
+    private var retryDelay: UInt64 = 15
 
     private let defaults: UserDefaults
 
@@ -46,6 +54,71 @@ final class AppState: ObservableObject {
                 self?.pendingChanged()
             }
         }
+
+        Sync.onChange = { [weak self] in
+            self?.syncVersion += 1
+            self?.dataChanged()
+        }
+
+        Sync.onQueued = { [weak self] in
+            Task {
+                await self?.sendWaiting()
+            }
+        }
+
+        Connectivity.shared.onOnline = { [weak self] in
+            Task {
+                // screens showing the phone's copy load the server's figures again
+                self?.dataChanged()
+                await self?.sendWaiting()
+            }
+        }
+    }
+
+    // MARK: - Changes saved on the phone
+
+    /// Sends what was saved on the phone; while a server doesn't answer, tries again a little later each time.
+    func sendWaiting() async {
+        retryTask?.cancel()
+        retryTask = nil
+
+        guard Sync.hasWaiting else {
+            return
+        }
+
+        if await Sync.run(servers: servers) {
+            retryDelay = 15
+        } else {
+            let delay = retryDelay
+            retryDelay = min(retryDelay * 2, 600)
+            retryTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: delay * 1_000_000_000)
+
+                if !Task.isCancelled {
+                    await self?.sendWaiting()
+                }
+            }
+        }
+
+        Self.scheduleBackgroundSync()
+    }
+
+    /// Asks iOS to wake the app now and then while changes wait, so they reach the server even if the app isn't opened.
+    static func scheduleBackgroundSync() {
+        guard Sync.hasWaiting else {
+            BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: syncTaskId)
+            return
+        }
+
+        let request = BGAppRefreshTaskRequest(identifier: syncTaskId)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+        try? BGTaskScheduler.shared.submit(request)
+    }
+
+    /// Runs in the background refresh: the saved servers, without the screens.
+    static func sendWaitingInBackground() async {
+        await Sync.run(servers: savedServers(defaults: .standard))
+        scheduleBackgroundSync()
     }
 
     /// The To review list changed here or in a Shortcuts action, or the app came back to the front.
@@ -91,6 +164,8 @@ final class AppState: ObservableObject {
 
     func remove(_ server: Server) {
         Keychain.setToken(nil, for: server.id)
+        LocalStore.shared.clearCache(serverId: server.id)
+        LocalStore.shared.removeAll(serverId: server.id)
         WebSession.clear(server)
         servers.removeAll { $0.id == server.id }
 
@@ -128,6 +203,8 @@ final class AppState: ObservableObject {
 
         forgetSignIn(server.id)
         WebSession.clear(server)
+        // changes saved on the phone stay, and are sent once the same user signs in again
+        LocalStore.shared.clearCache(serverId: server.id)
     }
 
     private func forgetSignIn(_ serverId: String) {
@@ -213,15 +290,21 @@ final class AppState: ObservableObject {
         save()
     }
 
-    private func load() {
-        if let data = defaults.data(forKey: Self.serversKey),
-           let saved = try? JSONDecoder().decode([Server].self, from: data) {
-            servers = saved.map { server in
-                var server = server
-                server.token = Keychain.token(for: server.id)
-                return server
-            }
+    /// The servers saved in the settings, with their sign-ins from the Keychain.
+    static func savedServers(defaults: UserDefaults) -> [Server] {
+        guard let data = defaults.data(forKey: serversKey), let saved = try? JSONDecoder().decode([Server].self, from: data) else {
+            return []
         }
+
+        return saved.map { server in
+            var server = server
+            server.token = Keychain.token(for: server.id)
+            return server
+        }
+    }
+
+    private func load() {
+        servers = Self.savedServers(defaults: defaults)
 
         activeServerId = defaults.string(forKey: Self.activeServerKey)
 

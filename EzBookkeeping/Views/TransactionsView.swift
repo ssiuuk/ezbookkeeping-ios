@@ -17,11 +17,19 @@ struct TransactionsView: View {
     @State private var activeKeyword: String?
     @State private var error: String?
     @State private var editor: EditorTarget?
+    /// When the list on screen was saved, while the server can't be reached.
+    @State private var offlineSince: Date?
 
     private static let pageSize = 50
 
     var body: some View {
         List {
+            if let offlineSince {
+                Section {
+                    OfflineNote(savedAt: offlineSince)
+                }
+            }
+
             if let error {
                 Section {
                     Text(error)
@@ -198,7 +206,7 @@ struct TransactionsView: View {
         loading = true
 
         do {
-            let result = try await server.client().get("v1/transactions/list.json", query: [
+            let fetched = try await server.client().load("v1/transactions/list.json", query: [
                 ("count", String(Self.pageSize)),
                 ("page", "1"),
                 ("max_time", reset ? "0" : (nextTimeSequenceId ?? "0")),
@@ -211,9 +219,13 @@ struct TransactionsView: View {
                 return
             }
 
-            let page = TransactionPage.parse(result)
+            let page = TransactionPage.parse(fetched.value)
             loading = false
             error = nil
+
+            if reset {
+                offlineSince = fetched.savedAt
+            }
             nextTimeSequenceId = page.nextTimeSequenceId
 
             if reset {

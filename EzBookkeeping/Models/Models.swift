@@ -291,6 +291,12 @@ struct TransactionRecord: Identifiable {
         tagNames = json.objects("tags").map { $0.string("name") }
         pictureIds = json.objects("pictures").map { $0.string("pictureId") }
         pictureURLs = json.objects("pictures").map { $0.string("originalUrl") }
+
+        // what is sent to the server (a change saved on the phone) names photos by id only
+        if let sent = json.array("pictureIds") {
+            pictureIds = sent.map { "\($0)" }
+            pictureURLs = []
+        }
     }
 
     var date: Date {
