@@ -42,6 +42,15 @@ final class AppState: ObservableObject {
             }
 
             Keychain.removeAll()
+            // the app group holds the widget's copy of the sign-in, the purchases to review and the offline copy
+            SharedDefaults.defaults.removePersistentDomain(forName: SharedDefaults.appGroup)
+            LocalStore.shared.removeEverything()
+        }
+
+        if ProcessInfo.processInfo.arguments.contains("-pendingPurchaseForUITesting"),
+           let purchase = Purchase.from(merchant: "Corner Cafe", amount: "£4.50", card: "Visa •••• 1234") {
+            // what an Apple Pay automation would hand over, for the walkthrough's To review step
+            PendingPurchases.add(purchase, source: "uitest")
         }
 
         load()

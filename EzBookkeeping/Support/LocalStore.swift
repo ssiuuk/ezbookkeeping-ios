@@ -292,6 +292,16 @@ final class LocalStore: @unchecked Sendable {
         return outbox.sent.first { $0.changeId == changeId }
     }
 
+    /// Forgets every server's answers and changes, for a UI test that starts from scratch.
+    func removeEverything() {
+        lock.lock()
+        defer { lock.unlock() }
+
+        try? FileManager.default.removeItem(at: folder.appendingPathComponent("cache", isDirectory: true))
+        outbox = Outbox()
+        saveOutbox()
+    }
+
     func removeAll(serverId: String) {
         lock.lock()
         defer { lock.unlock() }

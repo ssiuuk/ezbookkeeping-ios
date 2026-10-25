@@ -210,6 +210,41 @@ final class ScreenshotTests: XCTestCase {
         try waitForGone(element(containing: lunch), "the moved transaction leaving my book")
         settle()
         shot("20-overview-after-moving")
+
+        // MARK: A purchase to review
+
+        // stands in for an Apple Pay automation in Shortcuts, which can't run in a UI test
+        app.terminate()
+        app.launchArguments = ["-disableAnimations", "-pendingPurchaseForUITesting"]
+        app.launch()
+
+        let purchase = app.buttons["pending:Corner Cafe"]
+        try waitFor(purchase, "the purchase to review on the overview")
+        settle()
+        shot("21-to-review")
+
+        try openEditor(purchase)
+        try waitFor(app.navigationBars["Review purchase"], "the review form")
+        try waitForValue(of: app.buttons["merchant"], toContain: "Corner Cafe")
+        try waitForValue(of: app.textFields["amount"], toContain: "4.50")
+        settle()
+        shot("22-review-purchase")
+
+        try choose("category", "Restaurants")
+        let takePhoto = app.buttons["take_photo"]
+
+        // the server says whether it takes photos
+        if takePhoto.waitForExistence(timeout: 5) {
+            try scrollTo(takePhoto, "photos section")
+            settle()
+            shot("23-review-photos")
+        }
+
+        try tap(app.buttons["save_button"], "Save button")
+        try waitForGone(app.buttons["save_button"], "the review form closing")
+        try waitForGone(purchase, "the purchase leaving the To review list")
+        settle()
+        shot("24-overview-after-review")
     }
 
     // MARK: - Steps
