@@ -43,7 +43,7 @@ struct ChoiceListRow: View {
 
 /// A sheet with a title and a Cancel button around a list of choices.
 struct ChoiceSheet<Content: View>: View {
-    let title: String
+    let title: LocalizedStringResource
     @ViewBuilder let content: () -> Content
 
     @Environment(\.dismiss) private var dismiss
@@ -53,7 +53,7 @@ struct ChoiceSheet<Content: View>: View {
             List {
                 content()
             }
-            .navigationTitle(title)
+            .navigationTitle(Text(title))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -192,7 +192,7 @@ struct CategoryGroupPicker: View {
     }
 
     private var alertTitle: String {
-        newGroup ? "New category" : "New category in \(group?.name ?? "")"
+        newGroup ? String(localized: "New category") : String(localized: "New category in \(group?.name ?? "")")
     }
 
     private func ask(group: TransactionCategory?) {
@@ -208,7 +208,7 @@ struct CategoryGroupPicker: View {
         let trimmedGroup = groupName.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !trimmedName.isEmpty, !newGroup || !trimmedGroup.isEmpty else {
-            model.alert = .message("Enter a name")
+            model.alert = .message(String(localized: "Enter a name"))
             return
         }
 
@@ -263,7 +263,7 @@ struct ProjectPickerSheet: View {
 
     var body: some View {
         ChoiceSheet(title: "Choose a project") {
-            ChoiceListRow(title: "No project", selected: model.findProject(model.projectId) == nil) {
+            ChoiceListRow(title: String(localized: "No project"), selected: model.findProject(model.projectId) == nil) {
                 model.projectId = "0"
                 dismiss()
             }
@@ -288,7 +288,7 @@ struct MerchantPickerSheet: View {
 
     var body: some View {
         ChoiceSheet(title: "Choose a merchant") {
-            ChoiceListRow(title: "No merchant", selected: model.merchant.isEmpty) {
+            ChoiceListRow(title: String(localized: "No merchant"), selected: model.merchant.isEmpty) {
                 model.choose(merchant: "")
                 dismiss()
             }

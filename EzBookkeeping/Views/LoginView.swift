@@ -89,7 +89,7 @@ struct LoginView: View {
                 Section {
                     HStack {
                         Button(action: submit) {
-                            Text(twoFactorToken == nil ? "Sign in" : "Verify")
+                            Text(twoFactorToken == nil ? String(localized: "Sign in") : String(localized: "Verify"))
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
@@ -146,7 +146,7 @@ struct LoginView: View {
         let name = loginName.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !name.isEmpty, !password.isEmpty else {
-            error = name.isEmpty ? "Enter your username or email" : "Enter your password"
+            error = name.isEmpty ? String(localized: "Enter your username or email") : String(localized: "Enter your password")
             return
         }
 
@@ -179,7 +179,7 @@ struct LoginView: View {
         let code = passcode.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard code.count == 6 else {
-            error = "Enter the 6-digit code from your authenticator app."
+            error = String(localized: "Enter the 6-digit code from your authenticator app.")
             return
         }
 
@@ -204,7 +204,7 @@ struct LoginView: View {
         let token = result.string("token")
 
         guard !token.isEmpty else {
-            error = "Unexpected response from the server"
+            error = String(localized: "Unexpected response from the server")
             return
         }
 

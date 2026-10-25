@@ -83,11 +83,11 @@ enum Formats {
 
     static func dayHeader(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
         if calendar.isDate(date, inSameDayAs: now) {
-            return "Today"
+            return String(localized: "Today")
         }
 
         if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) {
-            return "Yesterday"
+            return String(localized: "Yesterday")
         }
 
         let formatter = DateFormatter()
@@ -165,16 +165,16 @@ enum AccountCategories {
 
     static func name(_ category: Int) -> String {
         switch category {
-        case 1: return "Cash"
-        case 2: return "Checking accounts"
-        case 3: return "Credit cards"
-        case 4: return "Virtual accounts"
-        case 5: return "Debts"
-        case 6: return "Receivables"
-        case 7: return "Investments"
-        case 8: return "Savings accounts"
-        case 9: return "Certificates of deposit"
-        default: return "Other accounts"
+        case 1: return String(localized: "Cash")
+        case 2: return String(localized: "Checking accounts")
+        case 3: return String(localized: "Credit cards")
+        case 4: return String(localized: "Virtual accounts")
+        case 5: return String(localized: "Debts")
+        case 6: return String(localized: "Receivables")
+        case 7: return String(localized: "Investments")
+        case 8: return String(localized: "Savings accounts")
+        case 9: return String(localized: "Certificates of deposit")
+        default: return String(localized: "Other accounts")
         }
     }
 

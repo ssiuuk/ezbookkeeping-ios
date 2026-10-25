@@ -52,21 +52,22 @@ struct MoreView: View {
         }
     }
 
-    private func webItem(_ title: String, _ icon: String, _ route: String) -> some View {
+    private func webItem(_ title: LocalizedStringResource, _ icon: String, _ route: String) -> some View {
         Button {
-            webPage = WebPage(title: title, route: route)
+            webPage = WebPage(title: String(localized: title), route: route)
         } label: {
-            Label(title, systemImage: icon)
+            Label(String(localized: title), systemImage: icon)
                 .foregroundStyle(.primary)
         }
     }
 }
 
-/// App settings: which server to use, sign-out, theme and version.
+/// App settings: which server to use, sign-out, theme, language and version.
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @AppStorage(AppState.themeKey) private var theme = ThemeChoice.system.rawValue
     @State private var confirmingSignOut = false
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         Form {
@@ -96,7 +97,7 @@ struct SettingsView: View {
                 NavigationLink {
                     ServersView(firstRun: false)
                 } label: {
-                    LabeledContent("Manage servers", value: appState.servers.count == 1 ? "1 server" : "\(appState.servers.count) servers")
+                    LabeledContent("Manage servers", value: String(localized: "\(appState.servers.count) servers"))
                 }
                 .accessibilityIdentifier("manage_servers")
             }
@@ -108,6 +109,17 @@ struct SettingsView: View {
                     }
                 }
                 .accessibilityIdentifier("theme")
+
+                // iOS keeps each app's language in the Settings app, which this opens at the app's own page
+                Button {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        openURL(url)
+                    }
+                } label: {
+                    LabeledContent("Language", value: Self.language)
+                        .foregroundStyle(.primary)
+                }
+                .accessibilityIdentifier("language")
 
                 LabeledContent("Version", value: Self.version)
             }
@@ -130,5 +142,12 @@ struct SettingsView: View {
         let short = info?["CFBundleShortVersionString"] as? String ?? ""
         let build = info?["CFBundleVersion"] as? String ?? ""
         return build.isEmpty ? short : "\(short) (\(build))"
+    }
+
+    /// The language the app shows, named in that language.
+    private static var language: String {
+        let code = Bundle.main.preferredLocalizations.first ?? "en"
+        let name = Locale(identifier: code).localizedString(forIdentifier: code) ?? code
+        return name.prefix(1).uppercased() + name.dropFirst()
     }
 }

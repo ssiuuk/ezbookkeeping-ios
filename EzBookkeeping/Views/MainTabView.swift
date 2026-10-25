@@ -25,7 +25,7 @@ struct MainTabView: View {
             .tag(MainTab.overview)
 
             NavigationStack {
-                TransactionsView(accountIds: nil, title: "Transactions")
+                TransactionsView(accountIds: nil, title: String(localized: "Transactions"))
             }
             .tabItem {
                 Label("Transactions", systemImage: "list.bullet")
@@ -89,7 +89,7 @@ struct BookMenu: View {
                     }
                 }
             } label: {
-                Label(appState.activeServer?.bookName ?? "My book", systemImage: "books.vertical")
+                Label(appState.activeServer?.bookName ?? String(localized: "My book"), systemImage: "books.vertical")
                     .labelStyle(.titleAndIcon)
             }
             .accessibilityIdentifier("book_menu")

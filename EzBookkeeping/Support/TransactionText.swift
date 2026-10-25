@@ -4,7 +4,7 @@ import Foundation
 enum TransactionText {
     static func title(_ transaction: TransactionRecord) -> String {
         if transaction.type == TransactionType.modifyBalance {
-            return "Balance change"
+            return String(localized: "Balance change")
         }
 
         if !transaction.categoryName.isEmpty {
@@ -13,11 +13,11 @@ enum TransactionText {
 
         switch transaction.type {
         case TransactionType.income:
-            return "Income"
+            return String(localized: "Income")
         case TransactionType.transfer:
-            return "Transfer"
+            return String(localized: "Transfer")
         default:
-            return "Expense"
+            return String(localized: "Expense")
         }
     }
 

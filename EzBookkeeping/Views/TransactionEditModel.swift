@@ -31,10 +31,10 @@ final class TransactionEditModel: ObservableObject {
 
         var title: String {
             switch self {
-            case .message: return "Something went wrong"
-            case .loadFailed: return "Unable to reach the server"
-            case .moveIncomplete: return "Copied, but not moved"
-            case .confirmDelete: return "Delete this transaction?"
+            case .message: return String(localized: "Something went wrong")
+            case .loadFailed: return String(localized: "Unable to reach the server")
+            case .moveIncomplete: return String(localized: "Copied, but not moved")
+            case .confirmDelete: return String(localized: "Delete this transaction?")
             }
         }
 
@@ -43,7 +43,7 @@ final class TransactionEditModel: ObservableObject {
             case .message(let text), .loadFailed(let text), .moveIncomplete(let text):
                 return text
             case .confirmDelete:
-                return "This can't be undone."
+                return String(localized: "This can't be undone.")
             }
         }
     }
@@ -546,7 +546,7 @@ final class TransactionEditModel: ObservableObject {
     }
 
     var bookText: String {
-        findBook(bookId)?.label ?? (bookId == nil ? "My book" : (server.bookName ?? ""))
+        findBook(bookId)?.label ?? (bookId == nil ? String(localized: "My book") : (server.bookName ?? ""))
     }
 
     var tagsText: String {
@@ -588,7 +588,7 @@ final class TransactionEditModel: ObservableObject {
             return nil
         }
 
-        let paid = pending.card.isEmpty ? "Apple Pay" : pending.card
+        let paid = pending.card.isEmpty ? String(localized: "Apple Pay") : pending.card
         return pending.currency.isEmpty ? paid : "\(paid) · \(Formats.amount(pending.amount, currency: pending.currency))"
     }
 
@@ -820,7 +820,7 @@ final class TransactionEditModel: ObservableObject {
                 invalid.insert(.destinationAccount)
             } else if let account, destinationAccount?.id == account.id {
                 invalid.insert(.destinationAccount)
-                problem = "Choose two different accounts"
+                problem = String(localized: "Choose two different accounts")
             }
 
             if showsDestinationAmount {
@@ -843,7 +843,7 @@ final class TransactionEditModel: ObservableObject {
         }
 
         if photos.contains(where: { $0.uploading }) {
-            alert = .message("Wait until the photos have uploaded.")
+            alert = .message(String(localized: "Wait until the photos have uploaded."))
             return
         }
 
@@ -884,7 +884,7 @@ final class TransactionEditModel: ObservableObject {
         }
 
         if moving && !Connectivity.shared.isOnline {
-            alert = .message("Moving to another book needs the server. Try again when it can be reached.")
+            alert = .message(String(localized: "Moving to another book needs the server. Try again when it can be reached."))
             return
         }
 
@@ -1004,8 +1004,8 @@ final class TransactionEditModel: ObservableObject {
             finish()
         } catch {
             changedData = true
-            let from = findBook(originalBookId)?.label ?? "the other book"
-            alert = .moveIncomplete("The transaction was saved in the new book, but couldn't be removed from \(from) (\(error.localizedDescription)). Delete it there so it isn't counted twice.")
+            let from = findBook(originalBookId)?.label ?? String(localized: "the other book")
+            alert = .moveIncomplete(String(localized: "The transaction was saved in the new book, but couldn't be removed from \(from) (\(error.localizedDescription)). Delete it there so it isn't counted twice.")
         }
     }
 
@@ -1078,7 +1078,7 @@ final class TransactionEditModel: ObservableObject {
                 photos.removeAll { $0.id == photo.id }
 
                 if !(error is CancellationError) {
-                    alert = .message("The photo couldn't be uploaded (\(error.localizedDescription)).")
+                    alert = .message(String(localized: "The photo couldn't be uploaded (\(error.localizedDescription))."))
                 }
             }
         }

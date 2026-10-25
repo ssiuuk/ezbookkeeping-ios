@@ -19,6 +19,9 @@ settings:
     CODE_SIGN_IDENTITY: "-"
     DEVELOPMENT_TEAM: ""
     ENABLE_USER_SCRIPT_SANDBOXING: YES
+    # lists the strings the app shows for scripts/check-strings.py
+    SWIFT_EMIT_LOC_STRINGS: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
 
 targets:
   EzBookkeeping:
@@ -38,6 +41,30 @@ targets:
       path: EzBookkeeping/Info.plist
       properties:
         CFBundleDisplayName: ezBookkeeping
+        # the server's languages (Localizable.xcstrings); iOS offers them under the app in the Settings app
+        CFBundleLocalizations:
+          - en
+          - de
+          - el
+          - es
+          - fr
+          - it
+          - ja
+          - kn
+          - ko
+          - nl
+          - pl
+          - pt
+          - ro
+          - ru
+          - sl
+          - ta
+          - th
+          - tr
+          - uk
+          - vi
+          - zh-Hans
+          - zh-Hant
         # the widget's buttons open ezbookkeeping://add and ezbookkeeping://review
         CFBundleURLTypes:
           - CFBundleURLName: com.ssiuuk.ezbookkeeping
@@ -104,6 +131,29 @@ targets:
       path: EzBookkeepingWidget/Info.plist
       properties:
         CFBundleDisplayName: ezBookkeeping
+        CFBundleLocalizations:
+          - en
+          - de
+          - el
+          - es
+          - fr
+          - it
+          - ja
+          - kn
+          - ko
+          - nl
+          - pl
+          - pt
+          - ro
+          - ru
+          - sl
+          - ta
+          - th
+          - tr
+          - uk
+          - vi
+          - zh-Hans
+          - zh-Hant
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:

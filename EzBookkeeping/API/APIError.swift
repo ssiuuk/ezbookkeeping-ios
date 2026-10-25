@@ -23,6 +23,6 @@ struct APIError: LocalizedError, Equatable {
 
     static func unreachable(_ detail: String?) -> APIError {
         let suffix = detail.map { " (\($0))" } ?? ""
-        return APIError(httpStatus: 0, errorCode: 0, message: "Can't reach the server" + suffix, unreachable: true)
+        return APIError(httpStatus: 0, errorCode: 0, message: String(localized: "Can't reach the server") + suffix, unreachable: true)
     }
 }

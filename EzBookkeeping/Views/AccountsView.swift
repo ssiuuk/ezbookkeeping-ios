@@ -52,7 +52,7 @@ struct AccountsView: View {
                     Text("Create an account first so transactions have somewhere to go.")
                 } actions: {
                     Button("Add account") {
-                        webPage = WebPage(title: "Add account", route: "/account/add")
+                        webPage = WebPage(title: String(localized: "Add account"), route: "/account/add")
                     }
                 }
             } else if loading && accounts.isEmpty {
@@ -135,11 +135,11 @@ struct AccountRow: View {
 
     private var subtitle: String {
         if account.hasSubAccounts {
-            return "\(account.subAccounts.count) sub-accounts"
+            return String(localized: "\(account.subAccounts.count) sub-accounts")
         }
 
         if !account.sharedBy.isEmpty {
-            return "Shared by " + account.sharedBy
+            return String(localized: "Shared by \(account.sharedBy)")
         }
 
         return account.currency

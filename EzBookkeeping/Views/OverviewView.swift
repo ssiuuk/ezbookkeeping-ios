@@ -127,11 +127,11 @@ struct OverviewView: View {
                     .accessibilityIdentifier("change")
                 }
             } header: {
-                Text(changes.count == 1 ? "1 transaction not on the server yet" : "\(changes.count) transactions not on the server yet")
+                Text("\(changes.count) transactions not on the server yet")
             } footer: {
                 Text(changes.contains { !$0.isWaiting }
-                     ? "Tap the ones marked in red to choose what to keep."
-                     : "They are sent by themselves as soon as the server answers.")
+                     ? String(localized: "Tap the ones marked in red to choose what to keep.")
+                     : String(localized: "They are sent by themselves as soon as the server answers."))
             }
         }
     }
@@ -178,7 +178,7 @@ struct OverviewView: View {
                     }
                 }
             } header: {
-                Text(pending.count == 1 ? "1 purchase to review" : "\(pending.count) purchases to review")
+                Text("\(pending.count) purchases to review")
             } footer: {
                 if !pending.isEmpty {
                     Text("Tap a purchase to save it as a transaction, or swipe it away.")
@@ -211,16 +211,16 @@ struct OverviewView: View {
                     .font(.largeTitle.bold().monospacedDigit())
                     .accessibilityIdentifier("month_expense")
                 HStack {
-                    Text("Income " + Formats.amount(summary.period("thisMonth").income, currency: summary.currency))
+                    Text("Income \(Formats.amount(summary.period("thisMonth").income, currency: summary.currency))")
                         .foregroundStyle(Color.income)
                     Spacer()
-                    Text("Last month " + Formats.amount(summary.period("lastMonth").expense, currency: summary.currency))
+                    Text("Last month \(Formats.amount(summary.period("lastMonth").expense, currency: summary.currency))")
                         .foregroundStyle(.secondary)
                 }
                 .font(.subheadline)
 
                 if !summary.unconverted.isEmpty {
-                    Text("Also " + summary.unconverted.joined(separator: ", "))
+                    Text("Also \(summary.unconverted.joined(separator: ", "))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -240,7 +240,7 @@ struct OverviewView: View {
         }
     }
 
-    private func periodRow(_ label: String, _ values: Summary.Totals, _ currency: String) -> some View {
+    private func periodRow(_ label: LocalizedStringKey, _ values: Summary.Totals, _ currency: String) -> some View {
         HStack {
             Text(label)
             Spacer()

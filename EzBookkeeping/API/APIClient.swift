@@ -118,7 +118,7 @@ struct APIClient {
         components?.queryItems = items
 
         guard let url = components?.url else {
-            throw APIError(httpStatus: 0, errorCode: 0, message: "Invalid server address")
+            throw APIError(httpStatus: 0, errorCode: 0, message: String(localized: "Invalid server address"))
         }
 
         let received: (Data, URLResponse)
@@ -136,7 +136,7 @@ struct APIClient {
         let status = (received.1 as? HTTPURLResponse)?.statusCode ?? 0
 
         guard status == 200 else {
-            throw APIError(httpStatus: status, errorCode: 0, message: "The server answered with error \(status)")
+            throw APIError(httpStatus: status, errorCode: 0, message: String(localized: "The server answered with error \(status)"))
         }
 
         return received.0
@@ -153,7 +153,7 @@ struct APIClient {
 
     private func send(method: String, path: String, body: Data?, contentType: String = "application/json; charset=utf-8") async throws -> Any? {
         guard let url = URL(string: baseURL + "/api/" + path) else {
-            throw APIError(httpStatus: 0, errorCode: 0, message: "Invalid server address")
+            throw APIError(httpStatus: 0, errorCode: 0, message: String(localized: "Invalid server address"))
         }
 
         var request = URLRequest(url: url, timeoutInterval: Self.timeout)
@@ -215,7 +215,7 @@ struct APIClient {
 
         guard let envelope = parsed as? [String: Any] else {
             if status == 404 {
-                throw APIError(httpStatus: status, errorCode: 0, message: "This server doesn't support this feature")
+                throw APIError(httpStatus: status, errorCode: 0, message: String(localized: "This server doesn't support this feature"))
             }
 
             throw APIError(httpStatus: status, errorCode: 0, message: status >= 400
@@ -246,7 +246,7 @@ struct APIClient {
     /// Checks that an address is an ezBookkeeping server before it is saved, and reads what it offers.
     static func checkServer(_ baseURL: String) async throws -> ServerInfo {
         guard let url = URL(string: baseURL + "/server_settings.js") else {
-            throw APIError(httpStatus: 0, errorCode: 0, message: "Please enter a valid server address")
+            throw APIError(httpStatus: 0, errorCode: 0, message: String(localized: "Please enter a valid server address"))
         }
 
         let received: (Data, URLResponse)
@@ -263,7 +263,7 @@ struct APIClient {
         let text = status == 200 ? String(decoding: data, as: UTF8.self) : ""
 
         guard let info = ServerInfo.parse(script: text) else {
-            throw APIError(httpStatus: status, errorCode: 0, message: "This address doesn't look like an ezBookkeeping server")
+            throw APIError(httpStatus: status, errorCode: 0, message: String(localized: "This address doesn't look like an ezBookkeeping server"))
         }
 
         return info

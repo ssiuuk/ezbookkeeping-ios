@@ -198,10 +198,10 @@ struct Book: Identifiable, Hashable {
     /// "My book", the book's name, or the name and who shared it.
     var label: String {
         if isPersonal {
-            return "My book"
+            return String(localized: "My book")
         }
 
-        return isOwner ? name : "\(name) · Shared by \(ownerNickname)"
+        return isOwner ? name : String(localized: "\(name) · Shared by \(ownerNickname)")
     }
 }
 

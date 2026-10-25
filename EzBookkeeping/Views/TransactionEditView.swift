@@ -62,7 +62,7 @@ struct TransactionEditForm: View {
                     form
                 }
             }
-            .navigationTitle(model.pending != nil ? "Review purchase" : model.isEditing ? "Edit transaction" : "Add transaction")
+            .navigationTitle(model.pending != nil ? String(localized: "Review purchase") : model.isEditing ? String(localized: "Edit transaction") : String(localized: "Add transaction"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -145,7 +145,7 @@ struct TransactionEditForm: View {
 
             Task {
                 guard let data = try? await item.loadTransferable(type: Data.self) else {
-                    model.alert = .message("This photo can't be read.")
+                    model.alert = .message(String(localized: "This photo can't be read."))
                     return
                 }
 
@@ -202,7 +202,7 @@ struct TransactionEditForm: View {
             if let prepared {
                 model.addPhoto(jpeg: prepared.jpeg, thumbnail: prepared.thumbnail)
             } else {
-                model.alert = .message("This photo can't be read.")
+                model.alert = .message(String(localized: "This photo can't be read."))
             }
         }
     }
@@ -415,7 +415,7 @@ struct PhotoThumbnail: View {
             }
         }
         .accessibilityElement()
-        .accessibilityLabel(photo.uploading ? "Photo, uploading" : "Photo")
+        .accessibilityLabel(photo.uploading ? String(localized: "Photo, uploading") : String(localized: "Photo"))
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("photo")
     }
@@ -423,7 +423,7 @@ struct PhotoThumbnail: View {
 
 /// A form row that opens a choice list, showing the current choice on the right.
 struct ChoiceRow: View {
-    let title: String
+    let title: LocalizedStringResource
     let value: String
     let identifier: String
     var invalid = false
@@ -435,7 +435,7 @@ struct ChoiceRow: View {
                 Text(title)
                     .foregroundStyle(invalid ? Color.red : Color.primary)
                 Spacer(minLength: 12)
-                Text(value.isEmpty ? (invalid ? "Required" : "Choose") : value)
+                Text(value.isEmpty ? (invalid ? String(localized: "Required") : String(localized: "Choose")) : value)
                     .foregroundStyle(value.isEmpty ? (invalid ? Color.red : Color.secondary) : Color.primary)
                     .multilineTextAlignment(.trailing)
                     .lineLimit(2)
@@ -447,7 +447,7 @@ struct ChoiceRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(title)
+        .accessibilityLabel(Text(title))
         .accessibilityValue(value)
         .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier(identifier)
@@ -455,9 +455,9 @@ struct ChoiceRow: View {
 }
 
 struct ErrorText: View {
-    let text: String
+    let text: LocalizedStringResource
 
-    init(_ text: String) {
+    init(_ text: LocalizedStringResource) {
         self.text = text
     }
 

@@ -62,9 +62,9 @@ struct ServersView: View {
                 }
             }
         }
-        .navigationTitle(firstRun ? "" : "Servers")
+        .navigationTitle(firstRun ? "" : String(localized: "Servers"))
         .alert("Rename", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-            TextField(renaming?.hostLabel ?? "Name", text: $newName)
+            TextField(renaming?.hostLabel ?? String(localized: "Name"), text: $newName)
             Button("Cancel", role: .cancel) {}
             Button("Save") {
                 if let server = renaming {
@@ -96,7 +96,7 @@ struct ServersView: View {
 
     private func serverRow(_ server: Server) -> some View {
         let isActive = server.id == appState.activeServerId
-        let status = server.isSignedIn ? "Signed in as \(server.userDisplayName)" : "Not signed in"
+        let status = server.isSignedIn ? String(localized: "Signed in as \(server.userDisplayName)") : String(localized: "Not signed in")
 
         return Button {
             open(server)
@@ -108,7 +108,7 @@ struct ServersView: View {
                     Text(server.url)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    Text(isActive ? "In use · " + status : status)
+                    Text(isActive ? String(localized: "In use · \(status)") : status)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -209,7 +209,7 @@ struct ServersView: View {
         }
 
         guard let url = Server.normalizeURL(address) else {
-            addressError = "Please enter a valid server address"
+            addressError = String(localized: "Please enter a valid server address")
             return
         }
 

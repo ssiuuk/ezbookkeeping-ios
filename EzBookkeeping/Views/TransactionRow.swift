@@ -58,13 +58,13 @@ struct PendingPurchaseRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            let title = item.merchant.isEmpty ? "Unknown shop" : item.merchant
+            let title = item.merchant.isEmpty ? String(localized: "Unknown shop") : item.merchant
             Avatar(name: title, hexColor: "")
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .lineLimit(1)
-                Text(item.card.isEmpty ? "Apple Pay" : item.card)
+                Text(item.card.isEmpty ? String(localized: "Apple Pay") : item.card)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

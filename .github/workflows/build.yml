@@ -55,6 +55,7 @@ jobs:
           xcrun simctl list devices available | grep "$udid"
 
       - name: Build
+        id: build
         run: |
           if ! xcodebuild build-for-testing \
             -project EzBookkeeping.xcodeproj -scheme EzBookkeeping -configuration Debug \
@@ -76,6 +77,10 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             -only-testing:EzBookkeepingTests \
             -resultBundlePath "$RUNNER_TEMP/UnitTests.xcresult"
+
+      - name: Check the translations
+        if: always() && steps.build.outcome == 'success'
+        run: python3 scripts/check-strings.py "$RUNNER_TEMP/DerivedData"
 
       - name: Package the simulator app
         if: always()

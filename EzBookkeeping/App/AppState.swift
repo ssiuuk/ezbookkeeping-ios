@@ -231,7 +231,7 @@ final class AppState: ObservableObject {
         }
 
         forgetSignIn(server.id)
-        notice = "Your sign-in expired. Please sign in again."
+        notice = String(localized: "Your sign-in expired. Please sign in again.")
     }
 
     // MARK: - Books
@@ -362,9 +362,9 @@ enum ThemeChoice: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .system: return "System default"
-        case .light: return "Light"
-        case .dark: return "Dark"
+        case .system: return String(localized: "System default")
+        case .light: return String(localized: "Light")
+        case .dark: return String(localized: "Dark")
         }
     }
 
