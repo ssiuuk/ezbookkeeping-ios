@@ -127,7 +127,7 @@ struct OverviewView: View {
                     .accessibilityIdentifier("change")
                 }
             } header: {
-                Text("\(changes.count) transactions not on the server yet")
+                Text("\(changes.count) changes not on the server yet")
             } footer: {
                 Text(changes.contains { !$0.isWaiting }
                      ? String(localized: "Tap the ones marked in red to choose what to keep.")

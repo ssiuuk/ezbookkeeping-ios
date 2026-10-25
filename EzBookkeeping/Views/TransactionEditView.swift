@@ -145,7 +145,7 @@ struct TransactionEditForm: View {
 
             Task {
                 guard let data = try? await item.loadTransferable(type: Data.self) else {
-                    model.alert = .message(String(localized: "This photo can't be read."))
+                    model.alert = .message(String(localized: "Couldn't read that photo"))
                     return
                 }
 
@@ -202,7 +202,7 @@ struct TransactionEditForm: View {
             if let prepared {
                 model.addPhoto(jpeg: prepared.jpeg, thumbnail: prepared.thumbnail)
             } else {
-                model.alert = .message(String(localized: "This photo can't be read."))
+                model.alert = .message(String(localized: "Couldn't read that photo"))
             }
         }
     }
@@ -378,13 +378,13 @@ extension TransactionEditForm {
                     Button {
                         takingPhoto = true
                     } label: {
-                        Label("Take a photo", systemImage: "camera")
+                        Label("Take photo", systemImage: "camera")
                     }
                     .accessibilityIdentifier("take_photo")
                 }
 
                 PhotosPicker(selection: $photoItem, matching: .images) {
-                    Label("Choose a photo", systemImage: "photo.on.rectangle")
+                    Label("Choose photo", systemImage: "photo.on.rectangle")
                 }
                 .accessibilityIdentifier("choose_photo")
             }

@@ -31,8 +31,11 @@ struct AddPurchaseToReviewIntent: AppIntent {
         }
 
         PendingPurchases.add(purchase, source: "shortcuts")
-        let shop = purchase.merchant.isEmpty ? "" : " at " + purchase.merchant
-        return .result(dialog: "Added \(amount)\(shop) to To review.")
+        if purchase.merchant.isEmpty {
+            return .result(dialog: "Added \(amount) to To review.")
+        }
+
+        return .result(dialog: "Added \(amount) at \(purchase.merchant) to To review.")
     }
 }
 

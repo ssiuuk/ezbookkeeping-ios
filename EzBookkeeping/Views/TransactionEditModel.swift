@@ -843,7 +843,7 @@ final class TransactionEditModel: ObservableObject {
         }
 
         if photos.contains(where: { $0.uploading }) {
-            alert = .message(String(localized: "Wait until the photos have uploaded."))
+            alert = .message(String(localized: "Wait for the photos to finish uploading"))
             return
         }
 
@@ -1005,7 +1005,7 @@ final class TransactionEditModel: ObservableObject {
         } catch {
             changedData = true
             let from = findBook(originalBookId)?.label ?? String(localized: "the other book")
-            alert = .moveIncomplete(String(localized: "The transaction was saved in the new book, but couldn't be removed from \(from) (\(error.localizedDescription)). Delete it there so it isn't counted twice.")
+            alert = .moveIncomplete(String(localized: "The transaction was saved in the new book, but couldn't be removed from \(from) (\(error.localizedDescription)). Delete it there so it isn't counted twice."))
         }
     }
 
@@ -1078,7 +1078,7 @@ final class TransactionEditModel: ObservableObject {
                 photos.removeAll { $0.id == photo.id }
 
                 if !(error is CancellationError) {
-                    alert = .message(String(localized: "The photo couldn't be uploaded (\(error.localizedDescription))."))
+                    alert = .message(String(localized: "Couldn't upload the photo: \(error.localizedDescription)"))
                 }
             }
         }

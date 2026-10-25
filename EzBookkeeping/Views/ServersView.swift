@@ -108,7 +108,7 @@ struct ServersView: View {
                     Text(server.url)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    Text(isActive ? String(localized: "In use · \(status)") : status)
+                    Text(isActive ? String(localized: "In use") + " · " + status : status)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
