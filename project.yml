@@ -26,10 +26,23 @@ targets:
     platform: iOS
     sources:
       - path: EzBookkeeping
+    dependencies:
+      - target: EzBookkeepingWidget
+    entitlements:
+      path: EzBookkeeping/EzBookkeeping.entitlements
+      properties:
+        # shared with the widget: the server it shows, the purchases to review and the copy kept offline
+        com.apple.security.application-groups:
+          - group.com.ssiuuk.ezbookkeeping
     info:
       path: EzBookkeeping/Info.plist
       properties:
         CFBundleDisplayName: ezBookkeeping
+        # the widget's buttons open ezbookkeeping://add and ezbookkeeping://review
+        CFBundleURLTypes:
+          - CFBundleURLName: com.ssiuuk.ezbookkeeping
+            CFBundleURLSchemes:
+              - ezbookkeeping
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
@@ -59,10 +72,50 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ssiuuk.ezbookkeeping
         PRODUCT_NAME: EzBookkeeping
+        # set by the TestFlight workflow; empty for simulator builds
+        PROVISIONING_PROFILE_SPECIFIER: $(APP_PROFILE_SPECIFIER)
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_PREVIEWS: YES
+
+  EzBookkeepingWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: EzBookkeepingWidget
+      - path: EzBookkeeping/Resources
+      # the app's API, models and formatting, which the widget uses to load its figures by itself
+      - path: EzBookkeeping/API
+      - path: EzBookkeeping/Models
+      - path: EzBookkeeping/Support/Formats.swift
+      - path: EzBookkeeping/Support/Summary.swift
+      - path: EzBookkeeping/Support/TransactionText.swift
+      - path: EzBookkeeping/Support/Colors.swift
+      - path: EzBookkeeping/Support/LocalStore.swift
+      - path: EzBookkeeping/Support/PendingPurchases.swift
+      - path: EzBookkeeping/Support/WidgetShare.swift
+    entitlements:
+      path: EzBookkeepingWidget/EzBookkeepingWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.ssiuuk.ezbookkeeping
+    info:
+      path: EzBookkeepingWidget/Info.plist
+      properties:
+        CFBundleDisplayName: ezBookkeeping
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ssiuuk.ezbookkeeping.widget
+        PRODUCT_NAME: EzBookkeepingWidget
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SKIP_INSTALL: YES
+        PROVISIONING_PROFILE_SPECIFIER: $(WIDGET_PROFILE_SPECIFIER)
 
   EzBookkeepingTests:
     type: bundle.unit-test

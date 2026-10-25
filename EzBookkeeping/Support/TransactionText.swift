@@ -63,6 +63,8 @@ enum EditorTarget: Identifiable {
     case review(id: String)
     /// A transaction saved on the phone and not sent to the server yet.
     case change(id: Int)
+    /// A new transaction of a type, from a widget button; book is nil for the app's book, "personal" for the user's own.
+    case quick(type: Int, book: String?)
 
     var id: String {
         switch self {
@@ -74,6 +76,8 @@ enum EditorTarget: Identifiable {
             return "review-" + id
         case .change(let id):
             return "change-" + String(id)
+        case .quick(let type, let book):
+            return "quick-\(type)-" + (book ?? "")
         }
     }
 }

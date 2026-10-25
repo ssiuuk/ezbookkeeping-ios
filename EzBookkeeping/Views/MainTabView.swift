@@ -11,6 +11,8 @@ enum MainTab: Hashable {
 struct MainTabView: View {
     @EnvironmentObject private var appState: AppState
     @State private var tab = MainTab.overview
+    /// The add form a widget button asked for.
+    @State private var linkEditor: EditorTarget?
 
     var body: some View {
         TabView(selection: $tab) {
@@ -48,6 +50,21 @@ struct MainTabView: View {
         }
         .task {
             await appState.loadBooks()
+        }
+        .onChange(of: appState.link, initial: true) { _, link in
+            guard let link else {
+                return
+            }
+
+            appState.link = nil
+            tab = .overview
+
+            if case .add(let type, let book) = link {
+                linkEditor = .quick(type: type, book: book)
+            }
+        }
+        .sheet(item: $linkEditor) { target in
+            TransactionEditView(target: target)
         }
     }
 }

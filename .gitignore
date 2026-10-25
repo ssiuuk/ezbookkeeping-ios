@@ -17,3 +17,6 @@ xcuserdata/
 
 .DS_Store
 screens/
+EzBookkeeping/EzBookkeeping.entitlements
+EzBookkeepingWidget/Info.plist
+EzBookkeepingWidget/EzBookkeepingWidget.entitlements

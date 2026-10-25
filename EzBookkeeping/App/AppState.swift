@@ -1,6 +1,7 @@
 import BackgroundTasks
 import Foundation
 import SwiftUI
+import WidgetKit
 
 /// The servers the user added, which one is in use and the family books of that one.
 /// Server details are saved in UserDefaults and the sign-in tokens in the Keychain.
@@ -124,6 +125,7 @@ final class AppState: ObservableObject {
     /// The To review list changed here or in a Shortcuts action, or the app came back to the front.
     func pendingChanged() {
         pendingVersion += 1
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     var activeServer: Server? {
@@ -248,6 +250,7 @@ final class AppState: ObservableObject {
 
             books = Book.parseList(result)
             serverHasBooks = true
+            shareWithWidget()
 
             // the selected book may have been deleted or the user removed from it
             if let bookId = server.bookId, !books.contains(where: { $0.id == bookId }) {
@@ -277,6 +280,30 @@ final class AppState: ObservableObject {
 
     func dataChanged() {
         dataVersion += 1
+        // the widget shows the same figures, so it loads them again too
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// Tells the widget which server, sign-in and book the app uses.
+    private func shareWithWidget() {
+        let share = activeServer.map { server in
+            WidgetShare(serverId: server.id, serverName: server.displayName, url: server.url, token: server.token,
+                        userJson: server.userJson, bookId: server.bookId, bookName: server.bookName,
+                        books: books.map { WidgetShare.Book(id: $0.id, name: $0.label, isPersonal: $0.isPersonal) })
+        }
+
+        if WidgetShare.save(share) {
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
+
+    // MARK: - Links from the widget
+
+    /// A link the app was opened with, for the main screens to act on.
+    @Published var link: AppLink?
+
+    func open(_ url: URL) {
+        link = AppLink(url: url)
     }
 
     // MARK: - Saving
@@ -319,6 +346,7 @@ final class AppState: ObservableObject {
         }
 
         defaults.set(activeServerId, forKey: Self.activeServerKey)
+        shareWithWidget()
     }
 }
 

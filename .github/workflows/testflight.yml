@@ -59,9 +59,10 @@ jobs:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
           DIST_CERT_P12_BASE64: ${{ secrets.DIST_CERT_P12_BASE64 }}
           PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+          WIDGET_PROVISIONING_PROFILE_BASE64: ${{ secrets.WIDGET_PROVISIONING_PROFILE_BASE64 }}
         run: |
           missing=""
-          for name in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 DIST_CERT_P12_BASE64 PROVISIONING_PROFILE_BASE64; do
+          for name in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 DIST_CERT_P12_BASE64 PROVISIONING_PROFILE_BASE64 WIDGET_PROVISIONING_PROFILE_BASE64; do
             if [ -z "${!name}" ]; then missing="$missing $name"; fi
           done
           if [ -n "$missing" ]; then
@@ -75,13 +76,14 @@ jobs:
           if ! command -v xcodegen > /dev/null; then brew install xcodegen; fi
           xcodegen generate
 
-      - name: Install the certificate, profile and API key
+      - name: Install the certificate, profiles and API key
         id: signing
         env:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
           DIST_CERT_P12_BASE64: ${{ secrets.DIST_CERT_P12_BASE64 }}
           DIST_CERT_PASSWORD: ${{ secrets.DIST_CERT_PASSWORD }}
           PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+          WIDGET_PROVISIONING_PROFILE_BASE64: ${{ secrets.WIDGET_PROVISIONING_PROFILE_BASE64 }}
         run: |
           # a keychain of its own, so a self-hosted Mac's login keychain is left alone
           keychain="$RUNNER_TEMP/testflight.keychain-db"
@@ -104,16 +106,24 @@ jobs:
             exit 1
           fi
 
-          profile="$RUNNER_TEMP/app.mobileprovision"
-          printf '%s' "$PROVISIONING_PROFILE_BASE64" | base64 --decode > "$profile"
-          security cms -D -i "$profile" > "$RUNNER_TEMP/profile.plist"
-          uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/profile.plist")"
-          profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/profile.plist")"
-          # Xcode 16 and later read the first folder, older versions the second
-          for dir in "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles" "$HOME/Library/MobileDevice/Provisioning Profiles"; do
-            mkdir -p "$dir"
-            cp "$profile" "$dir/$uuid.mobileprovision"
-          done
+          # one App Store profile for the app and one for its widget; prints the profile's UUID and name
+          install_profile() {
+            profile="$RUNNER_TEMP/$1.mobileprovision"
+            printf '%s' "$2" | base64 --decode > "$profile"
+            security cms -D -i "$profile" > "$RUNNER_TEMP/$1.plist"
+            uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$RUNNER_TEMP/$1.plist")"
+            # Xcode 16 and later read the first folder, older versions the second
+            for dir in "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles" "$HOME/Library/MobileDevice/Provisioning Profiles"; do
+              mkdir -p "$dir"
+              cp "$profile" "$dir/$uuid.mobileprovision"
+            done
+            rm -f "$profile"
+            echo "${1}_uuid=$uuid" >> "$GITHUB_OUTPUT"
+            echo "${1}_name=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$RUNNER_TEMP/$1.plist")" >> "$GITHUB_OUTPUT"
+            rm -f "$RUNNER_TEMP/$1.plist"
+          }
+          install_profile app "$PROVISIONING_PROFILE_BASE64"
+          install_profile widget "$WIDGET_PROVISIONING_PROFILE_BASE64"
 
           # altool reads the key from here
           mkdir -p "$HOME/.appstoreconnect/private_keys"
@@ -123,16 +133,15 @@ jobs:
           {
             echo "keychain=$keychain"
             echo "identity=$identity"
-            echo "profile_uuid=$uuid"
-            echo "profile_name=$profile_name"
             echo "key_path=$key_path"
           } >> "$GITHUB_OUTPUT"
-          echo "Signing with $identity and profile $profile_name"
+          echo "Signing with $identity"
 
       - name: Archive
         env:
           IDENTITY: ${{ steps.signing.outputs.identity }}
-          PROFILE_NAME: ${{ steps.signing.outputs.profile_name }}
+          APP_PROFILE: ${{ steps.signing.outputs.app_name }}
+          WIDGET_PROFILE: ${{ steps.signing.outputs.widget_name }}
           VERSION: ${{ steps.version.outputs.version }}
           BUILD: ${{ steps.version.outputs.build }}
         run: |
@@ -145,7 +154,8 @@ jobs:
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="$IDENTITY" \
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            APP_PROFILE_SPECIFIER="$APP_PROFILE" \
+            WIDGET_PROFILE_SPECIFIER="$WIDGET_PROFILE" \
             MARKETING_VERSION="$VERSION" \
             CURRENT_PROJECT_VERSION="$BUILD" > "$RUNNER_TEMP/archive.log" 2>&1; then
             grep -E "error:" "$RUNNER_TEMP/archive.log" | sort -u || true
@@ -157,7 +167,8 @@ jobs:
       - name: Export the .ipa
         env:
           IDENTITY: ${{ steps.signing.outputs.identity }}
-          PROFILE_UUID: ${{ steps.signing.outputs.profile_uuid }}
+          APP_UUID: ${{ steps.signing.outputs.app_uuid }}
+          WIDGET_UUID: ${{ steps.signing.outputs.widget_uuid }}
         run: |
           plist="$RUNNER_TEMP/ExportOptions.plist"
           /usr/libexec/PlistBuddy \
@@ -167,7 +178,8 @@ jobs:
             -c "Add :signingStyle string manual" \
             -c "Add :signingCertificate string $IDENTITY" \
             -c "Add :provisioningProfiles dict" \
-            -c "Add :provisioningProfiles:com.ssiuuk.ezbookkeeping string $PROFILE_UUID" \
+            -c "Add :provisioningProfiles:com.ssiuuk.ezbookkeeping string $APP_UUID" \
+            -c "Add :provisioningProfiles:com.ssiuuk.ezbookkeeping.widget string $WIDGET_UUID" \
             -c "Add :uploadSymbols bool true" \
             -c "Add :manageAppVersionAndBuildNumber bool false" \
             "$plist"
@@ -189,7 +201,8 @@ jobs:
         if: always()
         env:
           KEYCHAIN: ${{ steps.signing.outputs.keychain }}
-          PROFILE_UUID: ${{ steps.signing.outputs.profile_uuid }}
+          APP_UUID: ${{ steps.signing.outputs.app_uuid }}
+          WIDGET_UUID: ${{ steps.signing.outputs.widget_uuid }}
           KEY_PATH: ${{ steps.signing.outputs.key_path }}
         run: |
           if [ -f "$RUNNER_TEMP/keychains-before" ]; then
@@ -197,10 +210,12 @@ jobs:
             security list-keychains -d user -s $(cat "$RUNNER_TEMP/keychains-before")
           fi
           if [ -n "$KEYCHAIN" ]; then security delete-keychain "$KEYCHAIN" || true; fi
-          if [ -n "$PROFILE_UUID" ]; then
-            rm -f "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$PROFILE_UUID.mobileprovision" \
-              "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
-          fi
+          for uuid in "$APP_UUID" "$WIDGET_UUID"; do
+            if [ -n "$uuid" ]; then
+              rm -f "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/$uuid.mobileprovision" \
+                "$HOME/Library/MobileDevice/Provisioning Profiles/$uuid.mobileprovision"
+            fi
+          done
           if [ -n "$KEY_PATH" ]; then rm -f "$KEY_PATH"; fi
           rm -rf "$RUNNER_TEMP/export" "$RUNNER_TEMP/EzBookkeeping.xcarchive" "$RUNNER_TEMP/DerivedData" \
-            "$RUNNER_TEMP/app.mobileprovision" "$RUNNER_TEMP/profile.plist"
+            "$RUNNER_TEMP/app.mobileprovision" "$RUNNER_TEMP/widget.mobileprovision"

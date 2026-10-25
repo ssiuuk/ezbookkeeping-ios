@@ -61,6 +61,9 @@ struct RootView: View {
                 }
             }
         }
+        .onOpenURL { url in
+            appState.open(url)
+        }
         .alert("Signed out", isPresented: Binding(
             get: { appState.notice != nil },
             set: { if !$0 { appState.notice = nil } }

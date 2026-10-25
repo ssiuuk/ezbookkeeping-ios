@@ -104,8 +104,11 @@ final class LocalStore: @unchecked Sendable {
     private var outbox: Outbox
 
     init(folder: URL? = nil) {
-        let base = folder ?? (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory).appendingPathComponent("offline", isDirectory: true)
+        // in the app group, so the widget can show the app's copy while the server can't be reached
+        let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: SharedDefaults.appGroup)
+            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let base = folder ?? container.appendingPathComponent("offline", isDirectory: true)
         self.folder = base
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
 

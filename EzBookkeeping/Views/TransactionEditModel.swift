@@ -173,10 +173,21 @@ final class TransactionEditModel: ObservableObject {
 
         self.queued = queued
         transactionId = serverTransactionId
-        let book = queued.map { $0.bookId } ?? server.bookId
+        var book = queued.map { $0.bookId } ?? server.bookId
+
+        if case .quick(_, let quickBook) = target {
+            if let quickBook {
+                book = quickBook == "personal" ? nil : quickBook
+            }
+        }
+
         bookId = book
         originalBookId = book
         recent = RecentChoices(serverId: server.id, bookId: book)
+
+        if case .quick(let quickType, _) = target {
+            type = quickType
+        }
 
         if let queued {
             var record = TransactionRecord(json: JSONObject(queued.body))
