@@ -131,6 +131,9 @@
         }
       }
     },
+    "%@": {
+      "shouldTranslate": false
+    },
     "%@ · Shared by %@": {
       "localizations": {
         "de": {
@@ -3491,7 +3494,136 @@
         }
       }
     },
-    "Add %@ at %@ to review": {},
+    "Add ${amount} at ${merchant} to review": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "${amount} bei ${merchant} zum Prüfen hinzufügen"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Προσθήκη ${amount} στο ${merchant} για έλεγχο"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añadir ${amount} en ${merchant} por revisar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajouter ${amount} chez ${merchant} à vérifier"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungi ${amount} da ${merchant} da controllare"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "${merchant} での ${amount} を確認待ちに追加"
+          }
+        },
+        "kn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "${merchant} ನಲ್ಲಿ ${amount} ಅನ್ನು ಪರಿಶೀಲನೆಗೆ ಸೇರಿಸಿ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "${merchant}의 ${amount}을(를) 검토 대기에 추가"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "${amount} bij ${merchant} toevoegen om te controleren"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dodaj ${amount} w ${merchant} do sprawdzenia"
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adicionar ${amount} em ${merchant} para revisar"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adaugă ${amount} la ${merchant} de verificat"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить ${amount} в ${merchant} на проверку"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dodaj ${amount} pri ${merchant} za pregled"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "${merchant} இல் ${amount} ஐச் சரிபார்க்கச் சேர்"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "เพิ่ม ${amount} ที่ ${merchant} เพื่อรอตรวจสอบ"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "${merchant} için ${amount} tutarını incelemeye ekle"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Додати ${amount} у ${merchant} на перевірку"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thêm ${amount} tại ${merchant} để xem xét"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将 ${merchant} 的 ${amount} 加入待确认"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "將 ${merchant} 的 ${amount} 加入待確認"
+          }
+        }
+      }
+    },
     "Add a category": {
       "localizations": {
         "de": {
@@ -4012,7 +4144,6 @@
         }
       }
     },
-    "Add a purchase to %@": {},
     "Add a purchase to review": {
       "localizations": {
         "de": {
@@ -4143,7 +4274,6 @@
         }
       }
     },
-    "Add a purchase to review in %@": {},
     "Add account": {
       "localizations": {
         "de": {
@@ -4794,7 +4924,136 @@
         }
       }
     },
-    "Add the payment in %@ to review": {},
+    "Add the payment in ${message} to review": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zahlung aus ${message} zum Prüfen hinzufügen"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Προσθήκη της πληρωμής από ${message} για έλεγχο"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añadir el pago de ${message} por revisar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajouter le paiement de ${message} à vérifier"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungi il pagamento in ${message} da controllare"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "${message} の支払いを確認待ちに追加"
+          }
+        },
+        "kn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "${message} ನಲ್ಲಿನ ಪಾವತಿಯನ್ನು ಪರಿಶೀಲನೆಗೆ ಸೇರಿಸಿ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "${message}의 결제를 검토 대기에 추가"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De betaling in ${message} toevoegen om te controleren"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dodaj płatność z ${message} do sprawdzenia"
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adicionar o pagamento em ${message} para revisar"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adaugă plata din ${message} de verificat"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить оплату из ${message} на проверку"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dodaj plačilo iz ${message} za pregled"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "${message} இல் உள்ள கட்டணத்தைச் சரிபார்க்கச் சேர்"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "เพิ่มการชำระเงินใน ${message} เพื่อรอตรวจสอบ"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "${message} içindeki ödemeyi incelemeye ekle"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Додати оплату з ${message} на перевірку"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thêm khoản thanh toán trong ${message} để xem xét"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将 ${message} 中的付款加入待确认"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "將 ${message} 中的付款加入待確認"
+          }
+        }
+      }
+    },
     "Add transaction": {
       "localizations": {
         "de": {
@@ -13378,6 +13637,136 @@
         }
       }
     },
+    "For example https://money.example.com or http://192.168.1.10:8080": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zum Beispiel https://money.example.com oder http://192.168.1.10:8080"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Για παράδειγμα https://money.example.com ή http://192.168.1.10:8080"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Por ejemplo https://money.example.com o http://192.168.1.10:8080"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Par exemple https://money.example.com ou http://192.168.1.10:8080"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ad esempio https://money.example.com o http://192.168.1.10:8080"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "例：https://money.example.com または http://192.168.1.10:8080"
+          }
+        },
+        "kn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ಉದಾಹರಣೆಗೆ https://money.example.com ಅಥವಾ http://192.168.1.10:8080"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "예: https://money.example.com 또는 http://192.168.1.10:8080"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bijvoorbeeld https://money.example.com of http://192.168.1.10:8080"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Na przykład https://money.example.com lub http://192.168.1.10:8080"
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Por exemplo https://money.example.com ou http://192.168.1.10:8080"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De exemplu https://money.example.com sau http://192.168.1.10:8080"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Например, https://money.example.com или http://192.168.1.10:8080"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Na primer https://money.example.com ali http://192.168.1.10:8080"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "எடுத்துக்காட்டாக https://money.example.com அல்லது http://192.168.1.10:8080"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "เช่น https://money.example.com หรือ http://192.168.1.10:8080"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Örneğin https://money.example.com veya http://192.168.1.10:8080"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Наприклад, https://money.example.com або http://192.168.1.10:8080"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ví dụ: https://money.example.com hoặc http://192.168.1.10:8080"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "例如 https://money.example.com 或 http://192.168.1.10:8080"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "例如 https://money.example.com 或 http://192.168.1.10:8080"
+          }
+        }
+      }
+    },
     "From account": {
       "localizations": {
         "de": {
@@ -19094,6 +19483,136 @@
           "stringUnit": {
             "state": "translated",
             "value": "自 %@ 起未更新"
+          }
+        }
+      }
+    },
+    "OK": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aceptar"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        },
+        "kn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ಸರಿ"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "확인"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        },
+        "pt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ОК"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "V redu"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "சரி"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ตกลง"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tamam"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OK"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好"
           }
         }
       }
@@ -32747,6 +33266,9 @@
           }
         }
       }
+    },
+    "ezBookkeeping": {
+      "shouldTranslate": false
     },
     "the other book": {
       "localizations": {
