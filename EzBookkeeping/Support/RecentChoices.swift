@@ -2,7 +2,8 @@ import Foundation
 
 /// Remembers which account was used last for each category and each kind of transaction,
 /// per server and book, so a new transaction starts with the account people usually pick.
-/// It also keeps the category used at each shop. Same keys as the Android app's RecentChoices.
+/// It also keeps which account each payment card belongs to, and the category and account used at each shop.
+/// Same keys as the Android app's RecentChoices.
 struct RecentChoices {
     private let defaults: UserDefaults
     private let prefix: String
@@ -29,12 +30,29 @@ struct RecentChoices {
         return key.isEmpty ? nil : defaults.string(forKey: prefix + "merchant|" + key)
     }
 
-    /// Remembers the category used at a shop, so the next purchase there starts with it.
-    func rememberMerchant(_ merchant: String, categoryId: String) {
+    func accountForMerchant(_ merchant: String) -> String? {
+        let key = Self.merchantKey(merchant)
+        return key.isEmpty ? nil : defaults.string(forKey: prefix + "merchant-account|" + key)
+    }
+
+    func accountForCard(_ cardKey: String) -> String? {
+        cardKey.isEmpty ? nil : defaults.string(forKey: prefix + "card|" + cardKey)
+    }
+
+    /// Remembers the category and account used at a shop, so the next purchase there starts with them.
+    func rememberMerchant(_ merchant: String, categoryId: String, accountId: String) {
         let key = Self.merchantKey(merchant)
 
         if !key.isEmpty {
             defaults.set(categoryId, forKey: prefix + "merchant|" + key)
+            defaults.set(accountId, forKey: prefix + "merchant-account|" + key)
+        }
+    }
+
+    /// Remembers the account a payment card belongs to, so the next purchase with it picks the same account.
+    func rememberCard(_ cardKey: String, accountId: String) {
+        if !cardKey.isEmpty {
+            defaults.set(accountId, forKey: prefix + "card|" + cardKey)
         }
     }
 

@@ -52,7 +52,76 @@ struct APIClient {
         return try await send(method: "POST", path: path, body: data)
     }
 
-    private func send(method: String, path: String, body: Data?) async throws -> Any? {
+    /// Uploads one file as a multipart form, for transaction pictures, and returns the "result" value.
+    @discardableResult
+    func upload(_ path: String, field: String, fileName: String, contentType: String, data: Data,
+                fields: [(String, String)] = []) async throws -> Any? {
+        let boundary = "ezbookkeeping-" + UUID().uuidString
+        var body = Data()
+
+        func append(_ text: String) {
+            body.append(Data(text.utf8))
+        }
+
+        for (name, value) in fields {
+            append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n")
+        }
+
+        append("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(field)\"; filename=\"\(fileName)\"\r\n")
+        append("Content-Type: \(contentType)\r\n\r\n")
+        body.append(data)
+        append("\r\n--\(boundary)--\r\n")
+
+        return try await send(method: "POST", path: path, body: body, contentType: "multipart/form-data; boundary=" + boundary)
+    }
+
+    /// Downloads a file the server protects with the sign-in, such as a transaction picture.
+    func download(_ address: String) async throws -> Data {
+        var components = URLComponents(string: address)
+        var items = components?.queryItems ?? []
+        items.append(URLQueryItem(name: "token", value: token ?? ""))
+
+        if let bookId, !bookId.isEmpty {
+            items.append(URLQueryItem(name: "book_id", value: bookId))
+        }
+
+        components?.queryItems = items
+
+        guard let url = components?.url else {
+            throw APIError(httpStatus: 0, errorCode: 0, message: "Invalid server address")
+        }
+
+        let received: (Data, URLResponse)
+
+        do {
+            received = try await Self.session.data(for: URLRequest(url: url, timeoutInterval: Self.timeout))
+        } catch {
+            if Task.isCancelled || (error as? URLError)?.code == .cancelled {
+                throw CancellationError()
+            }
+
+            throw APIError.unreachable(error.localizedDescription)
+        }
+
+        let status = (received.1 as? HTTPURLResponse)?.statusCode ?? 0
+
+        guard status == 200 else {
+            throw APIError(httpStatus: status, errorCode: 0, message: "The server answered with error \(status)")
+        }
+
+        return received.0
+    }
+
+    /// The server builds picture links from its configured root address, which may not be how this phone reaches it.
+    func pictureURL(_ address: String) -> String {
+        if let range = address.range(of: "/pictures/") {
+            return baseURL + String(address[range.lowerBound...])
+        }
+
+        return address
+    }
+
+    private func send(method: String, path: String, body: Data?, contentType: String = "application/json; charset=utf-8") async throws -> Any? {
         guard let url = URL(string: baseURL + "/api/" + path) else {
             throw APIError(httpStatus: 0, errorCode: 0, message: "Invalid server address")
         }
@@ -75,7 +144,7 @@ struct APIClient {
         }
 
         if let body {
-            request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+            request.setValue(contentType, forHTTPHeaderField: "Content-Type")
             request.httpBody = body
         }
 

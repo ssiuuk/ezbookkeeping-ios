@@ -5,6 +5,7 @@ struct OverviewView: View {
     @Binding var tab: MainTab
 
     @EnvironmentObject private var appState: AppState
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var amounts: [String: PeriodAmounts]?
     @State private var accounts: [Account]?
@@ -14,6 +15,9 @@ struct OverviewView: View {
     @State private var loading = false
     @State private var error: String?
     @State private var editor: EditorTarget?
+    @State private var pending: [PendingPurchases.Item] = []
+    /// The purchase just dismissed, which Undo puts back.
+    @State private var dismissed: PendingPurchases.Item?
 
     private static let recentCount = 5
 
@@ -31,6 +35,7 @@ struct OverviewView: View {
                 }
             }
 
+            reviewSection
             monthSection
             periodsSection
             assetsSection
@@ -67,6 +72,62 @@ struct OverviewView: View {
         .sheet(item: $editor) { target in
             TransactionEditView(target: target)
         }
+        .task(id: appState.pendingVersion) {
+            pending = PendingPurchases.list()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // an Apple Pay automation may have added a purchase while the app was in the background
+            if phase == .active {
+                appState.pendingChanged()
+            }
+        }
+    }
+
+    /// Purchases from Apple Pay automations, waiting to be saved; tapping one opens it in the add form.
+    @ViewBuilder
+    private var reviewSection: some View {
+        if !pending.isEmpty || dismissed != nil {
+            Section {
+                ForEach(pending) { item in
+                    Button {
+                        editor = .review(id: item.id)
+                    } label: {
+                        PendingPurchaseRow(item: item, defaultCurrency: appState.activeServer?.defaultCurrency ?? "")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("pending:" + item.merchant)
+                    .swipeActions {
+                        Button("Dismiss", role: .destructive) {
+                            dismiss(item)
+                        }
+                    }
+                }
+
+                if let dismissed {
+                    HStack {
+                        Text("Purchase dismissed")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Undo") {
+                            PendingPurchases.restore(dismissed)
+                            self.dismissed = nil
+                        }
+                        .accessibilityIdentifier("undo_dismiss")
+                    }
+                }
+            } header: {
+                Text(pending.count == 1 ? "1 purchase to review" : "\(pending.count) purchases to review")
+            } footer: {
+                if !pending.isEmpty {
+                    Text("Tap a purchase to save it as a transaction, or swipe it away.")
+                }
+            }
+        }
+    }
+
+    private func dismiss(_ item: PendingPurchases.Item) {
+        PendingPurchases.remove(item.id)
+        dismissed = item
     }
 
     // MARK: - Sections

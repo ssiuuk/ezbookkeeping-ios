@@ -59,6 +59,8 @@ enum TransactionText {
 enum EditorTarget: Identifiable {
     case add(accountId: String?)
     case edit(id: String)
+    /// A purchase from the To review list, opened in the add form.
+    case review(id: String)
 
     var id: String {
         switch self {
@@ -66,6 +68,8 @@ enum EditorTarget: Identifiable {
             return "add-" + (accountId ?? "")
         case .edit(let id):
             return "edit-" + id
+        case .review(let id):
+            return "review-" + id
         }
     }
 }

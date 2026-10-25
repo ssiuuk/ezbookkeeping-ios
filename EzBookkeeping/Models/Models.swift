@@ -247,6 +247,7 @@ struct TransactionRecord: Identifiable {
     var editable: Bool
     var geoLocation: [String: Any]?
     var pictureIds: [String]
+    var pictureURLs: [String]
     var projectId: String
     var merchant: String
 
@@ -289,6 +290,7 @@ struct TransactionRecord: Identifiable {
         }
         tagNames = json.objects("tags").map { $0.string("name") }
         pictureIds = json.objects("pictures").map { $0.string("pictureId") }
+        pictureURLs = json.objects("pictures").map { $0.string("originalUrl") }
     }
 
     var date: Date {

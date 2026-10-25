@@ -48,11 +48,31 @@ final class TransactionEditModel: ObservableObject {
         }
     }
 
+    /// Why the account was set; only a default or a shop's account gives way to another shop's account.
+    enum AccountSource {
+        case automatic
+        case shop
+        case card
+        case given
+    }
+
+    /// A photo on the form: being uploaded, or already on the server.
+    struct Photo: Identifiable, Equatable {
+        let id: String
+        /// The server's picture id, once uploaded.
+        var pictureId: String?
+        var url: String?
+        /// A small JPEG to show on the form.
+        var thumbnail: Data?
+        var uploading = false
+    }
+
     /// Choices from the previous book, looked up by name in the new one.
     private struct Carried {
         var categoryName: String?
         var categoryParentName: String?
         var account: Account?
+        var accountSource = AccountSource.automatic
         var destinationAccount: Account?
         var tagNames: [String] = []
         var projectName: String?
@@ -90,6 +110,11 @@ final class TransactionEditModel: ObservableObject {
     @Published var amountText = ""
     @Published var destinationAmountText = ""
     @Published var comment = ""
+    @Published private(set) var photos: [Photo] = []
+    /// Whether the server takes photos (its server_settings.js "p" flag).
+    @Published private(set) var photosSupported = true
+    /// The purchase from the To review list this form saves, if any.
+    let pending: PendingPurchases.Item?
 
     @Published private(set) var loading = false
     @Published private(set) var saving = false
@@ -103,6 +128,7 @@ final class TransactionEditModel: ObservableObject {
 
     private var recent: RecentChoices
     private var accountChosen = false
+    private(set) var accountSource = AccountSource.automatic
     private var destinationChosen = false
     private var originalApplied = false
     private var started = false
@@ -115,7 +141,20 @@ final class TransactionEditModel: ObservableObject {
         self.server = server
         bookId = server.bookId
         originalBookId = server.bookId
+        if case .review(let id) = target {
+            pending = PendingPurchases.get(id)
+        } else {
+            pending = nil
+        }
+
         recent = RecentChoices(serverId: server.id, bookId: server.bookId)
+
+        if let pending {
+            type = pending.refund ? TransactionType.income : TransactionType.expense
+            amountText = Formats.editableAmount(pending.amount)
+            time = pending.date
+            merchant = pending.merchant
+        }
     }
 
     var isEditing: Bool {
@@ -154,6 +193,13 @@ final class TransactionEditModel: ObservableObject {
 
         Task {
             await loadBooks()
+        }
+
+        Task {
+            // servers can turn photos off; they then keep the ones a transaction already has
+            if let info = try? await APIClient.checkServer(server.url) {
+                photosSupported = info.pictures
+            }
         }
 
         await loadBookData()
@@ -259,6 +305,15 @@ final class TransactionEditModel: ObservableObject {
             if case .add(let accountId) = target {
                 account = findAccount(accountId)
                 accountChosen = account != nil
+
+                if account != nil {
+                    // started from an account's page
+                    accountSource = .given
+                }
+            }
+
+            if pending != nil {
+                applyPendingChoices()
             }
 
             if account == nil {
@@ -298,6 +353,66 @@ final class TransactionEditModel: ObservableObject {
         if type == TransactionType.transfer {
             destinationAmountText = Formats.editableAmount(original.destinationAmount)
         }
+
+        photos = original.pictureIds.enumerated().map { index, pictureId in
+            Photo(id: UUID().uuidString, pictureId: pictureId,
+                  url: index < original.pictureURLs.count ? original.pictureURLs[index] : nil)
+        }
+
+        for photo in photos {
+            loadThumbnail(photo)
+        }
+    }
+
+    /// The category used last time at this shop, and the account this card belongs to or else the one used at this shop.
+    private func applyPendingChoices() {
+        guard let pending else {
+            return
+        }
+
+        if category == nil, let categoryId = recent.categoryForMerchant(pending.merchant),
+           let remembered = findCategory(categoryId), categoriesOfType.contains(where: { $0.id == remembered.parentId }) {
+            category = remembered
+        }
+
+        if accountChosen {
+            return
+        }
+
+        // the card the purchase names is what was actually used, so it comes before the shop
+        var card = findAccount(recent.accountForCard(pending.cardKey))
+
+        // an account named or noted with the card's last four digits, like "Visa 1234"
+        if card == nil, pending.cardKey.range(of: "^\\d{4}$", options: .regularExpression) != nil {
+            card = accounts.first { $0.name.contains(pending.cardKey) || $0.comment.contains(pending.cardKey) }
+        }
+
+        if let card {
+            account = card
+            accountChosen = true
+            accountSource = .card
+            return
+        }
+
+        if let usedHere = findAccount(recent.accountForMerchant(pending.merchant)) {
+            account = usedHere
+            accountChosen = true
+            accountSource = .shop
+        }
+    }
+
+    /// On a new transaction, a shop picks the account last used there, unless the account was picked by hand,
+    /// came with the screen (an account's page) or is the card a purchase was paid with.
+    private func applyMerchantAccount() {
+        guard original == nil, accountSource == .automatic || accountSource == .shop,
+              let usedHere = findAccount(recent.accountForMerchant(merchant)) else {
+            return
+        }
+
+        account = usedHere
+        accountChosen = true
+        accountSource = .shop
+        errors.remove(.account)
     }
 
     /// Starts a new transaction with the accounts used last time for this category, or this kind of transaction.
@@ -424,8 +539,18 @@ final class TransactionEditModel: ObservableObject {
         original != nil || category != nil || !tagIds.isEmpty || projectId != "0"
     }
 
-    var pictureCount: Int {
-        original?.pictureIds.count ?? 0
+    /// Under the amount of a purchase to review: the card it was paid with, and the amount in its own currency.
+    var pendingNote: String? {
+        guard let pending else {
+            return nil
+        }
+
+        let paid = pending.card.isEmpty ? "Apple Pay" : pending.card
+        return pending.currency.isEmpty ? paid : "\(paid) · \(Formats.amount(pending.amount, currency: pending.currency))"
+    }
+
+    var showsPhotos: Bool {
+        photosSupported || !photos.isEmpty
     }
 
     // MARK: - Choices
@@ -460,8 +585,14 @@ final class TransactionEditModel: ObservableObject {
         } else {
             self.account = account
             accountChosen = true
+            accountSource = .given
             errors.remove(.account)
         }
+    }
+
+    func choose(merchant name: String) {
+        merchant = name
+        applyMerchantAccount()
     }
 
     /// Uses the spelling already in use, so one shop doesn't show up twice in reports.
@@ -472,7 +603,7 @@ final class TransactionEditModel: ObservableObject {
             return
         }
 
-        merchant = merchants.first(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) ?? trimmed
+        choose(merchant: merchants.first(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) ?? trimmed)
     }
 
     func switchBook(to chosen: String?) {
@@ -488,6 +619,7 @@ final class TransactionEditModel: ObservableObject {
         }
 
         carried.account = account
+        carried.accountSource = accountSource
         carried.destinationAccount = destinationAccount
         carried.tagNames = tags.filter { tagIds.contains($0.id) }.map(\.name)
         carried.projectName = findProject(projectId)?.name
@@ -499,6 +631,7 @@ final class TransactionEditModel: ObservableObject {
         account = nil
         destinationAccount = nil
         accountChosen = false
+        accountSource = .automatic
         destinationChosen = false
         tagIds = []
         merchants = []
@@ -536,6 +669,7 @@ final class TransactionEditModel: ObservableObject {
         if let same = findCarriedAccount(carried.account) {
             account = same
             accountChosen = true
+            accountSource = carried.accountSource
         }
 
         if let same = findCarriedAccount(carried.destinationAccount) {
@@ -665,6 +799,11 @@ final class TransactionEditModel: ObservableObject {
             return
         }
 
+        if photos.contains(where: { $0.uploading }) {
+            alert = .message("Wait until the photos have uploaded.")
+            return
+        }
+
         let moving = original != nil && bookId != originalBookId
         var body: [String: Any] = [:]
 
@@ -684,8 +823,8 @@ final class TransactionEditModel: ObservableObject {
         body["destinationAmount"] = transfer ? (destinationAmount ?? amount) : Int64(0)
         body["hideAmount"] = original?.hideAmount ?? false
         body["tagIds"] = tagIds
-        // photos aren't edited in this app, so an edit keeps the ones the transaction has
-        body["pictureIds"] = moving ? [String]() : (original?.pictureIds ?? [])
+        // a move by adding to the other book can't take photos along; the one-step move copies them
+        body["pictureIds"] = moving ? [String]() : photos.compactMap(\.pictureId)
         body["projectId"] = projectId
 
         if merchantsSupported || !merchant.isEmpty {
@@ -709,7 +848,15 @@ final class TransactionEditModel: ObservableObject {
             try await api().post(original == nil ? "v1/transactions/add.json" : "v1/transactions/modify.json", body: body)
             recent.remember(type: type, categoryId: category.id, accountId: account.id,
                             destinationAccountId: transfer ? destinationAccount?.id : nil)
-            recent.rememberMerchant(merchant, categoryId: category.id)
+            recent.rememberMerchant(merchant, categoryId: category.id, accountId: account.id)
+
+            if let pending {
+                recent.rememberCard(pending.cardKey, accountId: account.id)
+                // the automation keeps using its own name for the shop even if it was renamed here
+                recent.rememberMerchant(pending.merchant, categoryId: category.id, accountId: account.id)
+                PendingPurchases.remove(pending.id)
+            }
+
             finish()
         } catch {
             saving = false
@@ -727,7 +874,7 @@ final class TransactionEditModel: ObservableObject {
         var moveBody = body
         moveBody["id"] = original.id
         moveBody["sourceBookId"] = sourceBook.id
-        moveBody["pictureIds"] = original.pictureIds
+        moveBody["pictureIds"] = photos.compactMap(\.pictureId)
 
         do {
             try await api().post("v1/transactions/move/book.json", body: moveBody)
@@ -777,6 +924,73 @@ final class TransactionEditModel: ObservableObject {
         } catch {
             saving = false
             alert = .message(error.localizedDescription)
+        }
+    }
+
+    /// Takes a purchase off the To review list without saving it.
+    func dismissPending() {
+        if let pending {
+            PendingPurchases.remove(pending.id)
+        }
+
+        finish()
+    }
+
+    // MARK: - Photos
+
+    /// Shows a photo on the form and uploads it to the server; jpeg is already shrunk to a sensible size.
+    func addPhoto(jpeg: Data, thumbnail: Data?) {
+        let photo = Photo(id: UUID().uuidString, thumbnail: thumbnail, uploading: true)
+        photos.append(photo)
+        let client = api()
+
+        Task {
+            do {
+                let result = try await client.upload("v1/transaction/pictures/upload.json", field: "picture", fileName: "photo.jpg",
+                                                     contentType: "image/jpeg", data: jpeg,
+                                                     fields: [("clientSessionId", UUID().uuidString)])
+                let json = JSONObject(result)
+
+                if let index = photos.firstIndex(where: { $0.id == photo.id }) {
+                    photos[index].pictureId = json.string("pictureId")
+                    photos[index].url = json.string("originalUrl")
+                    photos[index].uploading = false
+                }
+            } catch {
+                photos.removeAll { $0.id == photo.id }
+
+                if !(error is CancellationError) {
+                    alert = .message("The photo couldn't be uploaded (\(error.localizedDescription)).")
+                }
+            }
+        }
+    }
+
+    func removePhoto(_ photo: Photo) {
+        photos.removeAll { $0.id == photo.id }
+    }
+
+    /// Thumbnails are made by the view, which knows about images; the model only keeps the bytes.
+    static var makeThumbnail: ((Data) -> Data?)?
+
+    private func loadThumbnail(_ photo: Photo) {
+        guard let url = photo.url, !url.isEmpty else {
+            return
+        }
+
+        let client = originalBookAPI()
+
+        Task {
+            guard let data = try? await client.download(client.pictureURL(url)) else {
+                // the photo stays attached; only its preview is missing
+                return
+            }
+
+            let thumbnail = Self.makeThumbnail?(data) ?? data
+
+            if let index = photos.firstIndex(where: { $0.id == photo.id }) {
+                photos[index].thumbnail = thumbnail
+            }
         }
     }
 

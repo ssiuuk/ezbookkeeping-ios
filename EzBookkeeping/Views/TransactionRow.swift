@@ -50,3 +50,38 @@ struct TransactionRow: View {
         .contentShape(Rectangle())
     }
 }
+
+/// A purchase waiting on the To review list: the shop, the card and the amount.
+struct PendingPurchaseRow: View {
+    let item: PendingPurchases.Item
+    let defaultCurrency: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            let title = item.merchant.isEmpty ? "Unknown shop" : item.merchant
+            Avatar(name: title, hexColor: "")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .lineLimit(1)
+                Text(item.card.isEmpty ? "Apple Pay" : item.card)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(Formats.signedAmount(item.amount, currency: item.currency.isEmpty ? defaultCurrency : item.currency, negative: !item.refund))
+                    .font(.body.monospacedDigit())
+                    .foregroundStyle(Color.amount(forType: item.refund ? TransactionType.income : TransactionType.expense))
+                Text(Formats.dayHeader(item.date) + " " + Formats.time(item.date))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+    }
+}

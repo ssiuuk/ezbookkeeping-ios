@@ -289,13 +289,13 @@ struct MerchantPickerSheet: View {
     var body: some View {
         ChoiceSheet(title: "Choose a merchant") {
             ChoiceListRow(title: "No merchant", selected: model.merchant.isEmpty) {
-                model.merchant = ""
+                model.choose(merchant: "")
                 dismiss()
             }
 
             ForEach(names, id: \.self) { name in
                 ChoiceListRow(title: name, selected: name == model.merchant) {
-                    model.merchant = name
+                    model.choose(merchant: name)
                     dismiss()
                 }
             }

@@ -193,12 +193,17 @@ final class ModelParsingTests: XCTestCase {
         let family = RecentChoices(serverId: "s1", bookId: "2", defaults: defaults)
 
         mine.remember(type: TransactionType.expense, categoryId: "21", accountId: "107", destinationAccountId: nil)
-        mine.rememberMerchant(" Corner Café ", categoryId: "21")
+        mine.rememberMerchant(" Corner Café ", categoryId: "21", accountId: "108")
+        mine.rememberCard("1234", accountId: "109")
 
         XCTAssertEqual(mine.accountForCategory("21", destination: false), "107")
         XCTAssertEqual(mine.accountForType(TransactionType.expense, destination: false), "107")
         XCTAssertNil(mine.accountForType(TransactionType.expense, destination: true))
         XCTAssertEqual(mine.categoryForMerchant("corner café"), "21")
+        XCTAssertEqual(mine.accountForMerchant("CORNER CAFÉ"), "108")
+        XCTAssertEqual(mine.accountForCard("1234"), "109")
+        XCTAssertNil(mine.accountForCard(""))
+        XCTAssertNil(family.accountForMerchant("Corner Café"))
         XCTAssertNil(family.accountForCategory("21", destination: false))
     }
 

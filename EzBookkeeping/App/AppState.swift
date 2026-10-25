@@ -19,6 +19,8 @@ final class AppState: ObservableObject {
     @Published private(set) var serverHasBooks = false
     /// A short notice for the whole app, such as an expired sign-in.
     @Published var notice: String?
+    /// Bumped when the To review list changes, which an automation can do while the app is open.
+    @Published private(set) var pendingVersion = 0
 
     private let defaults: UserDefaults
 
@@ -38,6 +40,17 @@ final class AppState: ObservableObject {
         APIClient.onUnauthorized = { [weak self] baseURL, token in
             self?.signInExpired(baseURL: baseURL, token: token)
         }
+
+        PendingPurchases.onChange = { [weak self] in
+            Task { @MainActor in
+                self?.pendingChanged()
+            }
+        }
+    }
+
+    /// The To review list changed here or in a Shortcuts action, or the app came back to the front.
+    func pendingChanged() {
+        pendingVersion += 1
     }
 
     var activeServer: Server? {

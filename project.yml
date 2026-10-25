@@ -48,6 +48,7 @@ targets:
           NSAllowsArbitraryLoads: true
           NSAllowsLocalNetworking: true
         NSLocalNetworkUsageDescription: ezBookkeeping connects to the bookkeeping server you add, which may be on your home network.
+        NSCameraUsageDescription: ezBookkeeping uses the camera when you take a photo of a receipt for a transaction.
         ITSAppUsesNonExemptEncryption: false
     settings:
       base:

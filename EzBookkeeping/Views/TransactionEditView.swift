@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 /// Opens the add or edit form for the server in use.
@@ -42,6 +43,9 @@ struct TransactionEditForm: View {
     @Environment(\.dismiss) private var dismiss
     @State private var sheet: EditSheet?
     @FocusState private var amountFocused: Bool
+    @State private var photoItem: PhotosPickerItem?
+    @State private var takingPhoto = false
+    @State private var photoToRemove: TransactionEditModel.Photo?
 
     init(target: EditorTarget, server: Server) {
         _model = StateObject(wrappedValue: TransactionEditModel(target: target, server: server))
@@ -58,7 +62,7 @@ struct TransactionEditForm: View {
                     form
                 }
             }
-            .navigationTitle(model.isEditing ? "Edit transaction" : "Add transaction")
+            .navigationTitle(model.pending != nil ? "Review purchase" : model.isEditing ? "Edit transaction" : "Add transaction")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -126,6 +130,37 @@ struct TransactionEditForm: View {
                 TagsPickerSheet(model: model)
             }
         }
+        .fullScreenCover(isPresented: $takingPhoto) {
+            CameraPicker { image in
+                addPhoto { PhotoProcessing.prepare(image) }
+            }
+            .ignoresSafeArea()
+        }
+        .onChange(of: photoItem) { _, item in
+            guard let item else {
+                return
+            }
+
+            photoItem = nil
+
+            Task {
+                guard let data = try? await item.loadTransferable(type: Data.self) else {
+                    model.alert = .message("This photo can't be read.")
+                    return
+                }
+
+                addPhoto { PhotoProcessing.prepare(data) }
+            }
+        }
+        .confirmationDialog("Remove this photo?", isPresented: Binding(
+            get: { photoToRemove != nil },
+            set: { if !$0 { photoToRemove = nil } }
+        ), titleVisibility: .visible, presenting: photoToRemove) { photo in
+            Button("Remove", role: .destructive) {
+                model.removePhoto(photo)
+            }
+            .accessibilityIdentifier("remove_photo")
+        }
         .alert(model.alert?.title ?? "", isPresented: Binding(
             get: { model.alert != nil },
             set: { if !$0 { model.alert = nil } }
@@ -159,9 +194,17 @@ struct TransactionEditForm: View {
         }
     }
 
-    /// Photos can't be added or removed in this app yet; the ones a transaction has stay attached.
-    private var photosText: String {
-        model.pictureCount == 1 ? "1 photo, kept as it is" : "\(model.pictureCount) photos, kept as they are"
+    /// Shrinks the photo away from the main thread, then shows it and uploads it.
+    private func addPhoto(_ prepare: @escaping @Sendable () -> (jpeg: Data, thumbnail: Data?)?) {
+        Task {
+            let prepared = await Task.detached(priority: .userInitiated) { prepare() }.value
+
+            if let prepared {
+                model.addPhoto(jpeg: prepared.jpeg, thumbnail: prepared.thumbnail)
+            } else {
+                model.alert = .message("This photo can't be read.")
+            }
+        }
     }
 
     private var isTransfer: Bool {
@@ -207,6 +250,11 @@ struct TransactionEditForm: View {
 
                 if model.errors.contains(.amount) {
                     ErrorText("Enter an amount")
+                }
+            } footer: {
+                if let note = model.pendingNote {
+                    Text(note)
+                        .accessibilityIdentifier("pending_note")
                 }
             }
 
@@ -266,9 +314,20 @@ struct TransactionEditForm: View {
                     .lineLimit(1...4)
                     .accessibilityIdentifier("comment")
 
-                if model.pictureCount > 0 {
-                    Label(photosText, systemImage: "photo")
-                        .foregroundStyle(.secondary)
+            }
+
+            if model.showsPhotos {
+                photosSection
+            }
+
+            if model.pending != nil {
+                Section {
+                    Button("Dismiss purchase", role: .destructive) {
+                        model.dismissPending()
+                    }
+                    .accessibilityIdentifier("dismiss_purchase")
+                } footer: {
+                    Text("Takes it off the To review list without saving it.")
                 }
             }
 
@@ -282,6 +341,9 @@ struct TransactionEditForm: View {
             }
         }
         .scrollDismissesKeyboard(.immediately)
+        .onAppear {
+            TransactionEditModel.makeThumbnail = PhotoProcessing.thumbnail
+        }
         .disabled(model.saving)
         .overlay {
             if model.loading || model.saving {
@@ -290,6 +352,75 @@ struct TransactionEditForm: View {
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
             }
         }
+    }
+}
+
+extension TransactionEditForm {
+    /// Receipts and other photos: thumbnails to tap for removing, and buttons to take or choose one.
+    fileprivate var photosSection: some View {
+        Section("Photos") {
+            if !model.photos.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(model.photos) { photo in
+                            PhotoThumbnail(photo: photo)
+                                .onTapGesture {
+                                    if !photo.uploading {
+                                        photoToRemove = photo
+                                    }
+                                }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                .accessibilityIdentifier("photos")
+            }
+
+            if model.photosSupported {
+                if CameraPicker.isAvailable {
+                    Button {
+                        takingPhoto = true
+                    } label: {
+                        Label("Take a photo", systemImage: "camera")
+                    }
+                    .accessibilityIdentifier("take_photo")
+                }
+
+                PhotosPicker(selection: $photoItem, matching: .images) {
+                    Label("Choose a photo", systemImage: "photo.on.rectangle")
+                }
+                .accessibilityIdentifier("choose_photo")
+            }
+        }
+    }
+}
+
+/// One photo on the form, dimmed with a spinner while it uploads.
+struct PhotoThumbnail: View {
+    let photo: TransactionEditModel.Photo
+
+    var body: some View {
+        ZStack {
+            if let data = photo.thumbnail, let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Color(.secondarySystemFill)
+            }
+        }
+        .frame(width: 88, height: 88)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .opacity(photo.uploading ? 0.5 : 1)
+        .overlay {
+            if photo.uploading {
+                ProgressView()
+            }
+        }
+        .accessibilityElement()
+        .accessibilityLabel(photo.uploading ? "Photo, uploading" : "Photo")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("photo")
     }
 }
 
