@@ -592,6 +592,56 @@ final class TransactionEditModel: ObservableObject {
         return pending.currency.isEmpty ? paid : "\(paid) · \(Formats.amount(pending.amount, currency: pending.currency))"
     }
 
+    // MARK: - Sums in the amount fields
+
+    /// "= £15.50" under an amount field while it holds a sum such as "12.50+3"; nil for a plain amount.
+    func sumPreview(destination: Bool) -> String? {
+        let text = destination ? destinationAmountText : amountText
+
+        guard Formats.isExpression(text), let cents = Formats.parseAmount(text) else {
+            return nil
+        }
+
+        let currency = (destination ? destinationAccount?.currency : account?.currency) ?? ""
+        return "= " + Formats.amount(cents, currency: currency)
+    }
+
+    /// Adds + − × ÷ from the keyboard's bar, replacing an operator just typed so "12+" then × gives "12×".
+    func appendOperator(_ symbol: String, destination: Bool) {
+        var text = destination ? destinationAmountText : amountText
+
+        if let last = text.last, Formats.operators.contains(last) {
+            text.removeLast()
+        }
+
+        // a sum starts with a number
+        guard !text.trimmingCharacters(in: .whitespaces).isEmpty else {
+            return
+        }
+
+        text += symbol
+        setAmountText(text, destination: destination)
+    }
+
+    /// Replaces a sum with its result, as the "=" key and leaving the field do; a sum that can't be worked out stays.
+    func workOutSum(destination: Bool) {
+        let text = destination ? destinationAmountText : amountText
+
+        guard Formats.isExpression(text), let cents = Formats.parseAmount(text), cents >= 0 else {
+            return
+        }
+
+        setAmountText(Formats.editableAmount(cents), destination: destination)
+    }
+
+    private func setAmountText(_ text: String, destination: Bool) {
+        if destination {
+            destinationAmountText = text
+        } else {
+            amountText = text
+        }
+    }
+
     var showsPhotos: Bool {
         photosSupported || !photos.isEmpty
     }

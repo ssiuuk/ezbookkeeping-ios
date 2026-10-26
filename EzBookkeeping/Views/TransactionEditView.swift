@@ -43,6 +43,7 @@ struct TransactionEditForm: View {
     @Environment(\.dismiss) private var dismiss
     @State private var sheet: EditSheet?
     @FocusState private var amountFocused: Bool
+    @FocusState private var destinationAmountFocused: Bool
     @State private var photoItem: PhotosPickerItem?
     @State private var takingPhoto = false
     @State private var photoToRemove: TransactionEditModel.Photo?
@@ -76,6 +77,7 @@ struct TransactionEditForm: View {
                     if model.webFallbackRoute == nil {
                         Button("Save") {
                             amountFocused = false
+                            destinationAmountFocused = false
                             Task {
                                 await model.save()
                             }
@@ -85,12 +87,30 @@ struct TransactionEditForm: View {
                     }
                 }
 
-                // the decimal pad has no return key, so give the keyboard a way to close
+                // the decimal pad has no return key, so give the keyboard a way to close; in an amount field it
+                // also gets + − × ÷ for working out a sum, like the Android app's amount field
                 ToolbarItemGroup(placement: .keyboard) {
+                    if amountFocused || destinationAmountFocused {
+                        ForEach(["+", "−", "×", "÷"], id: \.self) { symbol in
+                            Button(symbol) {
+                                model.appendOperator(symbol, destination: destinationAmountFocused)
+                            }
+                            .font(.title3.monospacedDigit())
+                            .accessibilityIdentifier("operator:" + symbol)
+                        }
+
+                        Button("=") {
+                            model.workOutSum(destination: destinationAmountFocused)
+                        }
+                        .font(.title3.monospacedDigit())
+                        .accessibilityIdentifier("operator:=")
+                    }
+
                     Spacer()
 
                     Button("Done") {
                         amountFocused = false
+                        destinationAmountFocused = false
                         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     }
                     .accessibilityIdentifier("keyboard_done")
@@ -243,9 +263,21 @@ struct TransactionEditForm: View {
                         .onChange(of: model.amountText) { _, _ in
                             model.errors.remove(.amount)
                         }
+                        .onChange(of: amountFocused) { _, focused in
+                            if !focused {
+                                model.workOutSum(destination: false)
+                            }
+                        }
 
                     Text(model.account?.currency ?? "")
                         .foregroundStyle(.secondary)
+                }
+
+                if let sum = model.sumPreview(destination: false) {
+                    Text(sum)
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("amount_sum")
                 }
 
                 if model.errors.contains(.amount) {
@@ -279,8 +311,20 @@ struct TransactionEditForm: View {
                     HStack {
                         TextField("Received amount", text: $model.destinationAmountText)
                             .keyboardType(.decimalPad)
+                            .focused($destinationAmountFocused)
                             .accessibilityIdentifier("destination_amount")
+                            .onChange(of: destinationAmountFocused) { _, focused in
+                                if !focused {
+                                    model.workOutSum(destination: true)
+                                }
+                            }
                         Text(model.destinationAccount?.currency ?? "")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let sum = model.sumPreview(destination: true) {
+                        Text(sum)
+                            .font(.subheadline.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
 

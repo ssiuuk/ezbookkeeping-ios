@@ -107,7 +107,16 @@ final class ScreenshotTests: XCTestCase {
         settle()
         shot("07-add-transaction")
 
-        try type("12.50", into: app.textFields["amount"])
+        // the keyboard's bar has + − × ÷ for working out a sum: 10 + 2.50
+        let amount = app.textFields["amount"]
+        try type("10", into: amount)
+        try tap(app.buttons["operator:+"], "the + key")
+        try type("2.50", into: amount)
+        try waitFor(app.staticTexts["amount_sum"], "the sum's result")
+        settle()
+        shot("07b-amount-sum")
+        try tap(app.buttons["operator:="], "the = key")
+        try waitForValue(of: amount, toContain: "12.50")
         try choose("category", "Restaurants", screenshot: "08-choose-category")
         try choose("account", "Credit card", screenshot: "09-choose-account")
         try waitForValue(of: app.buttons["account"], toContain: "Credit card")

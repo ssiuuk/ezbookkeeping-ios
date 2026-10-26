@@ -30,8 +30,102 @@ enum Formats {
     }
 
     /// Parses what the user typed in an amount field into cents, or returns nil.
-    /// Accepts "12.5", "12,50", "1,234.56" and "1.234,56".
+    /// Accepts "12.5", "12,50", "1,234.56" and "1.234,56", and sums such as "12.50+3" or "3×4.20" (see `evaluate`).
     static func parseAmount(_ text: String) -> Int64? {
+        guard let value = evaluate(text) else {
+            return nil
+        }
+
+        return cents(value)
+    }
+
+    /// Whether the text is a sum to work out rather than a plain amount, such as "12.50+3".
+    static func isExpression(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // a leading minus is only a sign
+        return trimmed.dropFirst().contains { operators.contains($0) }
+    }
+
+    static let operators: Set<Character> = ["+", "-", "−", "*", "×", "x", "X", "/", "÷"]
+
+    /// Works out a typed amount or sum with + − × ÷ (and * / x), multiplying and dividing first. Each number may be
+    /// written in any of the ways `parseAmount` accepts. Nil when it can't be read or divides by zero.
+    static func evaluate(_ text: String) -> Decimal? {
+        var numbers: [Decimal] = []
+        var pending: [Character] = []
+        var current = ""
+        var sign: Decimal = 1
+
+        func finishNumber() -> Bool {
+            guard let value = number(current) else {
+                return false
+            }
+
+            numbers.append(sign * value)
+            current = ""
+            sign = 1
+            return true
+        }
+
+        for character in text {
+            if operators.contains(character) {
+                if current.trimmingCharacters(in: .whitespaces).isEmpty {
+                    // a minus before a number makes it negative: "-3", "5×-2"
+                    guard character == "-" || character == "−" else {
+                        return nil
+                    }
+
+                    sign = -sign
+                    continue
+                }
+
+                guard finishNumber() else {
+                    return nil
+                }
+
+                pending.append(character)
+            } else {
+                current.append(character)
+            }
+        }
+
+        guard finishNumber() else {
+            return nil
+        }
+
+        // × and ÷ first, then + and −, left to right
+        var terms: [Decimal] = [numbers[0]]
+        var additions: [Character] = []
+
+        for (index, op) in pending.enumerated() {
+            let value = numbers[index + 1]
+
+            switch op {
+            case "*", "×", "x", "X":
+                terms[terms.count - 1] *= value
+            case "/", "÷":
+                guard value != 0 else {
+                    return nil
+                }
+
+                terms[terms.count - 1] /= value
+            default:
+                terms.append(value)
+                additions.append(op)
+            }
+        }
+
+        var total = terms[0]
+
+        for (index, op) in additions.enumerated() {
+            total += op == "+" ? terms[index + 1] : -terms[index + 1]
+        }
+
+        return total
+    }
+
+    /// One number as typed, without a sign: "12.5", "12,50", "1,234.56" or "1.234,56".
+    private static func number(_ text: String) -> Decimal? {
         var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: " ", with: "")
             .replacingOccurrences(of: "\u{00A0}", with: "")
@@ -51,14 +145,18 @@ enum Formats {
             cleaned = cleaned.replacingOccurrences(of: ",", with: "")
         }
 
-        guard cleaned.range(of: "^-?([0-9]+\\.?[0-9]*|\\.[0-9]+)$", options: .regularExpression) != nil,
-              let decimal = Decimal(string: cleaned, locale: Locale(identifier: "en_US_POSIX")) else {
+        guard cleaned.range(of: "^([0-9]+\\.?[0-9]*|\\.[0-9]+)$", options: .regularExpression) != nil else {
             return nil
         }
 
-        var cents = decimal * 100
+        return Decimal(string: cleaned, locale: Locale(identifier: "en_US_POSIX"))
+    }
+
+    /// Rounds to whole cents, or nil when it doesn't fit.
+    private static func cents(_ value: Decimal) -> Int64? {
+        var scaled = value * 100
         var rounded = Decimal()
-        NSDecimalRound(&rounded, &cents, 0, .plain)
+        NSDecimalRound(&rounded, &scaled, 0, .plain)
 
         let number = NSDecimalNumber(decimal: rounded)
 

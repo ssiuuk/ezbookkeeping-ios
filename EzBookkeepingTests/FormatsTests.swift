@@ -40,6 +40,29 @@ final class FormatsTests: XCTestCase {
         XCTAssertNil(Formats.parseAmount("1.2.3"))
     }
 
+    func testSumsInTheAmountField() {
+        XCTAssertEqual(Formats.parseAmount("12.50+3"), 1550)
+        XCTAssertEqual(Formats.parseAmount("12.50 + 3"), 1550)
+        XCTAssertEqual(Formats.parseAmount("20−4.25"), 1575)
+        XCTAssertEqual(Formats.parseAmount("20-4.25"), 1575)
+        XCTAssertEqual(Formats.parseAmount("3×4.20"), 1260)
+        XCTAssertEqual(Formats.parseAmount("3*4.20"), 1260)
+        XCTAssertEqual(Formats.parseAmount("10÷3"), 333)
+        XCTAssertEqual(Formats.parseAmount("10/4"), 250)
+        // × and ÷ before + and −
+        XCTAssertEqual(Formats.parseAmount("2+3×4"), 1400)
+        XCTAssertEqual(Formats.parseAmount("1,50+2,25"), 375)
+        XCTAssertEqual(Formats.parseAmount("1,234.56+1"), 123556)
+        XCTAssertEqual(Formats.parseAmount("5×-2"), -1000)
+        XCTAssertNil(Formats.parseAmount("12+"))
+        XCTAssertNil(Formats.parseAmount("×3"))
+        XCTAssertNil(Formats.parseAmount("5÷0"))
+        XCTAssertNil(Formats.parseAmount("1++2"))
+        XCTAssertTrue(Formats.isExpression("12+3"))
+        XCTAssertFalse(Formats.isExpression("-12"))
+        XCTAssertFalse(Formats.isExpression("12.50"))
+    }
+
     func testEditableAmount() {
         XCTAssertEqual(Formats.editableAmount(1250), "12.50")
         XCTAssertEqual(Formats.editableAmount(5), "0.05")
