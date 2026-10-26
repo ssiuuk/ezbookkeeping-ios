@@ -106,6 +106,24 @@ final class FormatsTests: XCTestCase {
         XCTAssertEqual(Formats.dayHeader(now.addingTimeInterval(-86_400), now: now, calendar: calendar), "Yesterday")
     }
 
+    /// The widget's notes under its figures: when an offline copy is from an earlier day or month it says which day,
+    /// and the currencies its totals leave out are named.
+    func testWidgetNotes() {
+        let now = Date()
+        XCTAssertNil(Formats.notUpdated(nil, now: now))
+        XCTAssertEqual(Formats.notUpdated(now, now: now), "Not updated since " + Formats.time(now))
+
+        for daysAgo in [1, 40] {
+            let saved = now.addingTimeInterval(-86_400 * Double(daysAgo))
+            let note = Formats.notUpdated(saved, now: now)
+            XCTAssertEqual(note, "Not updated since " + Formats.dayHeader(saved, now: now) + " " + Formats.time(saved))
+            XCTAssertNotEqual(note, "Not updated since " + Formats.time(saved), "an old copy must say its day")
+        }
+
+        XCTAssertNil(Formats.otherCurrencies([]))
+        XCTAssertEqual(Formats.otherCurrencies(["EUR", "JPY"]), "Also EUR, JPY")
+    }
+
     func testInitialsAndColors() {
         XCTAssertEqual(Formats.initial("  restaurants"), "R")
         XCTAssertEqual(Formats.initial(""), "?")

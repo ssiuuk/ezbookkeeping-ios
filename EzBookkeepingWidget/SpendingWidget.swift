@@ -189,6 +189,7 @@ struct SpendingWidgetView: View {
             VStack(alignment: .leading, spacing: 4) {
                 heading(figures)
                 spent(figures)
+                otherCurrencies(figures)
                 Spacer(minLength: 0)
                 if figures.savedAt != nil {
                     notUpdated(figures)
@@ -206,8 +207,10 @@ struct SpendingWidgetView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     heading(figures)
                     spent(figures)
+                    otherCurrencies(figures)
                     Spacer(minLength: 0)
                     stats(figures)
+                    notUpdated(figures)
                 }
 
                 Spacer(minLength: 8)
@@ -231,9 +234,12 @@ struct SpendingWidgetView: View {
                 }
 
                 stats(figures)
+                otherCurrencies(figures)
+                notUpdated(figures)
                 Divider()
 
-                ForEach(Array(figures.recent.prefix(4)), id: \.self) { row in
+                // the notes above take the place of a row
+                ForEach(Array(figures.recent.prefix(4 - notes(figures))), id: \.self) { row in
                     HStack {
                         VStack(alignment: .leading) {
                             Text(row.title)
@@ -298,7 +304,7 @@ struct SpendingWidgetView: View {
         entry.hideAmounts ? "•••" : Formats.amount(cents, currency: figures.currency)
     }
 
-    /// The period, the book when it isn't the user's own, and the currencies left out of the totals.
+    /// The period, and the book when it isn't the user's own.
     private func heading(_ figures: WidgetFigures) -> some View {
         HStack(spacing: 4) {
             Text(periodName(entry.period.rawValue))
@@ -343,11 +349,33 @@ struct SpendingWidgetView: View {
         }
     }
 
+    /// When the figures were saved, while the server can't be reached; nothing otherwise.
+    @ViewBuilder
     private func notUpdated(_ figures: WidgetFigures) -> some View {
-        Text("Not updated since \(Formats.savedAt(figures.savedAt ?? Date()))")
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
+        if let note = Formats.notUpdated(figures.savedAt, now: entry.date) {
+            Text(note)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(family == .systemSmall ? 2 : 1)
+                .minimumScaleFactor(0.8)
+        }
+    }
+
+    /// The currencies left out of the totals because there is no exchange rate for them; nothing otherwise.
+    @ViewBuilder
+    private func otherCurrencies(_ figures: WidgetFigures) -> some View {
+        if let note = Formats.otherCurrencies(figures.unconverted) {
+            Text(note)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+    }
+
+    private func notes(_ figures: WidgetFigures) -> Int {
+        (Formats.notUpdated(figures.savedAt, now: entry.date) == nil ? 0 : 1)
+            + (Formats.otherCurrencies(figures.unconverted) == nil ? 0 : 1)
     }
 
     private func addButton(type: Int, figures: WidgetFigures, systemImage: String, title: LocalizedStringKey? = nil) -> some View {

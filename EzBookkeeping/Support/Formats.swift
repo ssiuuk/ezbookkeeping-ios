@@ -208,6 +208,17 @@ enum Formats {
         Calendar.current.isDate(date, inSameDayAs: now) ? time(date) : dayHeader(date, now: now) + " " + time(date)
     }
 
+    /// Under figures kept on the phone because the server can't be reached: when they were saved, with the day when it
+    /// wasn't today. Nil for figures the server just gave.
+    static func notUpdated(_ savedAt: Date?, now: Date = Date()) -> String? {
+        savedAt.map { String(localized: "Not updated since \(Self.savedAt($0, now: now))") }
+    }
+
+    /// Under totals that leave out the amounts in currencies without an exchange rate: which ones. Nil when none are.
+    static func otherCurrencies(_ unconverted: [String]) -> String? {
+        unconverted.isEmpty ? nil : String(localized: "Also \(unconverted.joined(separator: ", "))")
+    }
+
     /// The first character of a name, for the round avatar in lists.
     static func initial(_ name: String) -> String {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)

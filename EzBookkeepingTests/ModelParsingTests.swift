@@ -154,6 +154,31 @@ final class ModelParsingTests: XCTestCase {
         XCTAssertTrue(summary.unconverted.isEmpty)
     }
 
+    /// What the widget names under its totals: a currency without a rate, or every other currency when the rates
+    /// couldn't be loaded at all.
+    func testTotalsNameTheCurrenciesTheyLeaveOut() {
+        let amounts = PeriodAmounts.parseAll(JSONObject.parse("""
+        {"thisMonth":{"amounts":[{"currency":"GBP","incomeAmount":"0","expenseAmount":"1000"},
+                                 {"currency":"EUR","incomeAmount":"0","expenseAmount":"2000"},
+                                 {"currency":"JPY","incomeAmount":"0","expenseAmount":"300"}]},
+         "today":{"amounts":[{"currency":"JPY","incomeAmount":"0","expenseAmount":"300"}]}}
+        """).raw)
+        let server = serverWithUser(#"{"defaultCurrency":"GBP"}"#)
+
+        let missingRate = ExchangeRates.parse(JSONObject.parse("""
+        {"baseCurrency":"EUR","exchangeRates":[{"currency":"GBP","rate":"0.5"}]}
+        """).raw)
+        let summary = Summary(server: server, amounts: amounts, accounts: [], rates: missingRate)
+        XCTAssertEqual(summary.period("thisMonth").expense, 1000 + 1000)
+        XCTAssertEqual(summary.unconverted, ["JPY"])
+        XCTAssertEqual(Formats.otherCurrencies(summary.unconverted), "Also JPY")
+
+        // the widget uses empty rates when the rates request fails
+        let noRates = Summary(server: server, amounts: amounts, accounts: [], rates: ExchangeRates())
+        XCTAssertEqual(noRates.period("thisMonth").expense, 1000)
+        XCTAssertEqual(Set(noRates.unconverted), ["EUR", "JPY"])
+    }
+
     func testServerSettingsScript() {
         let script = "window.EZBOOKKEEPING_SERVER_SETTINGS={};EZBOOKKEEPING_SERVER_SETTINGS['a']=0;EZBOOKKEEPING_SERVER_SETTINGS[\"o\"] = 1;"
         let info = ServerInfo.parse(script: script)

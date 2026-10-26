@@ -123,26 +123,26 @@ final class LocalStore: @unchecked Sendable {
     // MARK: - Answers
 
     /// Keeps the server's answer to a request, to show while the server can't be reached.
-    func putCached(serverId: String, bookId: String?, path: String, result: Any?) {
+    func putCached(serverId: String, userName: String, bookId: String?, path: String, result: Any?) {
         let wrapper: [String: Any] = ["savedAt": Date().timeIntervalSince1970, "result": result ?? NSNull()]
 
         guard JSONSerialization.isValidJSONObject(wrapper), let data = try? JSONSerialization.data(withJSONObject: wrapper) else {
             return
         }
 
-        let serverFolder = cacheFolder(serverId)
-        try? FileManager.default.createDirectory(at: serverFolder, withIntermediateDirectories: true)
+        let userFolder = cacheFolder(serverId, userName: userName)
+        try? FileManager.default.createDirectory(at: userFolder, withIntermediateDirectories: true)
 
         lock.lock()
         defer { lock.unlock() }
 
-        try? data.write(to: serverFolder.appendingPathComponent(Self.cacheName(bookId: bookId, path: path)), options: .atomic)
-        pruneCache(serverFolder)
+        try? data.write(to: userFolder.appendingPathComponent(Self.cacheName(bookId: bookId, path: path)), options: .atomic)
+        pruneCache(userFolder)
     }
 
-    /// An answer the server gave earlier, and when.
-    func getCached(serverId: String, bookId: String?, path: String) -> (result: Any?, savedAt: Date)? {
-        let file = cacheFolder(serverId).appendingPathComponent(Self.cacheName(bookId: bookId, path: path))
+    /// An answer the server gave the user earlier, and when.
+    func getCached(serverId: String, userName: String, bookId: String?, path: String) -> (result: Any?, savedAt: Date)? {
+        let file = cacheFolder(serverId, userName: userName).appendingPathComponent(Self.cacheName(bookId: bookId, path: path))
 
         lock.lock()
         let data = try? Data(contentsOf: file)
@@ -157,7 +157,7 @@ final class LocalStore: @unchecked Sendable {
         return (result is NSNull ? nil : result, Date(timeIntervalSince1970: savedAt))
     }
 
-    /// Forgets what a server answered, after signing out of it or removing it.
+    /// Forgets what a server answered any of its users, after signing out of it or removing it.
     func clearCache(serverId: String) {
         lock.lock()
         defer { lock.unlock() }
@@ -168,6 +168,11 @@ final class LocalStore: @unchecked Sendable {
     private func cacheFolder(_ serverId: String) -> URL {
         folder.appendingPathComponent("cache", isDirectory: true)
             .appendingPathComponent(serverId.replacingOccurrences(of: "/", with: "_"), isDirectory: true)
+    }
+
+    /// Each user of a server has their own folder, named by a hash since a user name can have any characters.
+    private func cacheFolder(_ serverId: String, userName: String) -> URL {
+        cacheFolder(serverId).appendingPathComponent("user-" + Self.hash(userName), isDirectory: true)
     }
 
     private func pruneCache(_ serverFolder: URL) {
@@ -191,14 +196,18 @@ final class LocalStore: @unchecked Sendable {
 
     /// A file name for a book and request: an FNV-1a hash, since the path can be long and full of symbols.
     static func cacheName(bookId: String?, path: String) -> String {
+        hash((bookId ?? "") + "|" + path) + ".json"
+    }
+
+    private static func hash(_ text: String) -> String {
         var hash: UInt64 = 0xcbf29ce484222325
 
-        for byte in ((bookId ?? "") + "|" + path).utf8 {
+        for byte in text.utf8 {
             hash ^= UInt64(byte)
             hash = hash &* 0x100000001b3
         }
 
-        return String(hash, radix: 16) + ".json"
+        return String(hash, radix: 16)
     }
 
     // MARK: - Changes waiting to be sent

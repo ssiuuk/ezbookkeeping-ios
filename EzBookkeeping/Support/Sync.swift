@@ -1,5 +1,14 @@
 import Foundation
 
+/// The requests sending makes, so the tests can answer them like a server.
+protocol SyncRemote {
+    func get(_ path: String, query: [(String, String?)]) async throws -> Any?
+    @discardableResult
+    func post(_ path: String, body: [String: Any]) async throws -> Any?
+}
+
+extension APIClient: SyncRemote {}
+
 /// Sends the transactions added, changed or deleted while the server was out of reach, oldest first, once it answers
 /// again, like the Android app's Sync. A change to a transaction that was also changed on the server meanwhile is held
 /// back as a conflict for the user to settle.
@@ -73,21 +82,34 @@ enum Sync {
     @discardableResult
     static func saveEdit(_ server: Server, change original: LocalStore.Change, body: [String: Any],
                          labels: [String: String]) -> LocalStore.Change {
-        var change = original
-        change.body = body
-        change.labels = labels
-        change.state = .waiting
-        change.message = nil
-        change.serverCopy = nil
-        change.attempts = 0
+        var newBody = body
 
-        if let updated = store.update(change) {
-            changed()
-            onQueued?()
-            return updated
+        if var change = store.change(original.id) {
+            // what sending found out meanwhile stays: an add that was tried may be on the server already, so the next
+            // try still looks for it; and an add the server answered for since is now a change to that transaction
+            if change.kind == .modify, original.kind == .add, let transactionId = change.transactionId {
+                newBody.removeValue(forKey: "clientSessionId")
+                newBody["id"] = transactionId
+            }
+
+            change.body = newBody
+            change.labels = labels
+            change.state = .waiting
+            change.message = nil
+            change.serverCopy = nil
+
+            if change.kind != .add {
+                change.attempts = 0
+            }
+
+            if let updated = store.update(change) {
+                changed()
+                onQueued?()
+                return updated
+            }
         }
 
-        var newBody = body
+        let change = original
 
         if let sent = store.sent(change.id) {
             if let serverCopy = sent.serverCopy, let transactionId = sent.transactionId {
@@ -251,7 +273,7 @@ enum Sync {
     }
 
     /// Sends one change. Every write checks that the user didn't edit it meanwhile, since the add form may be open on it.
-    static func send(_ original: LocalStore.Change, client: APIClient) async throws {
+    static func send(_ original: LocalStore.Change, client: any SyncRemote) async throws {
         var change = original
 
         switch change.kind {
@@ -275,10 +297,13 @@ enum Sync {
             let added = try await client.post("v1/transactions/add.json", body: change.body) as? [String: Any]
             let transactionId = added.map { JSONObject($0).string("id") }.flatMap { $0.isEmpty ? nil : $0 }
             store.markSent(change, transactionId: transactionId, serverCopy: added)
+            // after a try whose answer was lost, the server's duplicate check on clientSessionId answers with what that
+            // try added; when the user changed it since, this version still has to be sent, as a change to it
+            let answeredWithAnOlderVersion = original.attempts > 0 && added.map { !same($0, change.body) } ?? false
 
-            if !store.removeIfUnchanged(change), let transactionId {
+            if answeredWithAnOlderVersion || !store.removeIfUnchanged(change), let transactionId {
                 if var latest = store.change(change.id) {
-                    // edited while it was on its way: the newer version changes the transaction the server just made
+                    // edited while it was on its way, or before: the newer version changes the transaction the server has
                     latest.kind = .modify
                     latest.transactionId = transactionId
                     latest.base = added
@@ -361,7 +386,7 @@ enum Sync {
     }
 
     /// The server's version of a transaction, or nil when it no longer has it.
-    private static func fetch(_ client: APIClient, transactionId: String) async throws -> [String: Any]? {
+    private static func fetch(_ client: any SyncRemote, transactionId: String) async throws -> [String: Any]? {
         do {
             return try await client.get("v1/transactions/get.json", query: [
                 ("id", transactionId), ("trim_account", "false"), ("trim_category", "false"), ("trim_tag", "false"),
@@ -372,7 +397,7 @@ enum Sync {
     }
 
     /// A transaction on the server that says the same as this new one, at about the same time, or nil.
-    private static func findSimilar(_ client: APIClient, body: [String: Any]) async throws -> [String: Any]? {
+    private static func findSimilar(_ client: any SyncRemote, body: [String: Any]) async throws -> [String: Any]? {
         let time = JSONObject(body).int64("time")
         let date = Date(timeIntervalSince1970: TimeInterval(time))
         let parts = Calendar.current.dateComponents([.year, .month], from: date)

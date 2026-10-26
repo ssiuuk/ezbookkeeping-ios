@@ -13,6 +13,9 @@ struct APIClient {
     var bookId: String?
     /// The saved server whose answers `load` keeps on the phone; nil keeps none (sign-in, server checks).
     var cacheServerId: String?
+    /// The signed-in user the answers belong to: another user of the server never sees them, and an answer that comes
+    /// back after a different user signed in is kept for the user who asked. Empty or nil keeps none.
+    var cacheUserName: String?
 
     /// Called on the main actor when the server rejects the saved sign-in (HTTP 401).
     static var onUnauthorized: (@MainActor (_ baseURL: String, _ token: String) -> Void)?
@@ -49,13 +52,14 @@ struct APIClient {
         do {
             let value = try await send(method: "GET", path: fullPath, body: nil)
 
-            if let cacheServerId {
-                LocalStore.shared.putCached(serverId: cacheServerId, bookId: bookId, path: key, result: value)
+            if let cacheServerId, let cacheUserName, !cacheUserName.isEmpty {
+                LocalStore.shared.putCached(serverId: cacheServerId, userName: cacheUserName, bookId: bookId, path: key, result: value)
             }
 
             return Fetched(value: value, savedAt: nil)
         } catch let error as APIError where error.unreachable {
-            if let cacheServerId, let cached = LocalStore.shared.getCached(serverId: cacheServerId, bookId: bookId, path: key) {
+            if let cacheServerId, let cacheUserName, !cacheUserName.isEmpty,
+               let cached = LocalStore.shared.getCached(serverId: cacheServerId, userName: cacheUserName, bookId: bookId, path: key) {
                 return Fetched(value: cached.result, savedAt: cached.savedAt)
             }
 

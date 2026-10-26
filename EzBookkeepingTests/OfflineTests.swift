@@ -14,17 +14,55 @@ final class OfflineTests: XCTestCase {
         super.tearDown()
     }
 
-    func testAnswersAreKeptPerServerAndBook() throws {
+    func testAnswersAreKeptPerServerUserAndBook() throws {
         let store = LocalStore(folder: folder)
-        store.putCached(serverId: "s1", bookId: nil, path: "v1/accounts/list.json", result: [["id": "1", "name": "Cash"]])
+        store.putCached(serverId: "s1", userName: "alex", bookId: nil, path: "v1/accounts/list.json", result: [["id": "1", "name": "Cash"]])
 
-        let cached = try XCTUnwrap(store.getCached(serverId: "s1", bookId: nil, path: "v1/accounts/list.json"))
+        let cached = try XCTUnwrap(store.getCached(serverId: "s1", userName: "alex", bookId: nil, path: "v1/accounts/list.json"))
         XCTAssertEqual((cached.result as? [[String: Any]])?.first?["name"] as? String, "Cash")
-        XCTAssertNil(store.getCached(serverId: "s1", bookId: "7", path: "v1/accounts/list.json"))
-        XCTAssertNil(store.getCached(serverId: "s2", bookId: nil, path: "v1/accounts/list.json"))
+        XCTAssertNil(store.getCached(serverId: "s1", userName: "alex", bookId: "7", path: "v1/accounts/list.json"))
+        XCTAssertNil(store.getCached(serverId: "s2", userName: "alex", bookId: nil, path: "v1/accounts/list.json"))
+        XCTAssertNil(store.getCached(serverId: "s1", userName: "sam", bookId: nil, path: "v1/accounts/list.json"))
 
         store.clearCache(serverId: "s1")
-        XCTAssertNil(store.getCached(serverId: "s1", bookId: nil, path: "v1/accounts/list.json"))
+        XCTAssertNil(store.getCached(serverId: "s1", userName: "alex", bookId: nil, path: "v1/accounts/list.json"))
+    }
+
+    /// Alex's sign-in expires, Sam signs in on the same server, and then the server can't be reached: Sam doesn't see
+    /// Alex's copy, while Alex (or the widget, which asks as the user the app shares) still sees it.
+    func testAnotherUserOfTheServerDoesNotSeeTheCopy() async throws {
+        let serverId = "offline-test-" + UUID().uuidString
+        defer { LocalStore.shared.clearCache(serverId: serverId) }
+
+        // nothing listens on port 9, so the server can't be reached
+        var server = Server(id: serverId, name: "", url: "http://127.0.0.1:9")
+        server.token = "token"
+        server.userJson = #"{"username":"alex"}"#
+        LocalStore.shared.putCached(serverId: serverId, userName: "alex", bookId: nil, path: "v1/accounts/list.json",
+                                    result: [["id": "1", "name": "Alex's cash"]])
+
+        let alexs = try await server.client().load("v1/accounts/list.json")
+        XCTAssertNotNil(alexs.savedAt)
+        XCTAssertEqual((alexs.value as? [[String: Any]])?.first?["name"] as? String, "Alex's cash")
+
+        // the expired sign-in is forgotten: no user, so no copy
+        server.userJson = nil
+        XCTAssertEqual(server.client().cacheUserName, "")
+        await assertUnreachable(server.client())
+
+        server.userJson = #"{"username":"sam"}"#
+        await assertUnreachable(server.client())
+    }
+
+    private func assertUnreachable(_ client: APIClient, file: StaticString = #filePath, line: UInt = #line) async {
+        do {
+            _ = try await client.load("v1/accounts/list.json")
+            XCTFail("answered with another user's copy", file: file, line: line)
+        } catch let error as APIError {
+            XCTAssertTrue(error.unreachable, file: file, line: line)
+        } catch {
+            XCTFail("\(error)", file: file, line: line)
+        }
     }
 
     func testChangesSurviveARestartAndKeepTheirRevision() throws {
