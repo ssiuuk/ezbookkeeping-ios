@@ -30,18 +30,18 @@ struct NumberPad: View {
             }
 
             HStack(spacing: spacing) {
-                Grid(horizontalSpacing: spacing, verticalSpacing: spacing) {
+                // five equal columns: three of digits, the operators, and delete above OK
+                VStack(spacing: spacing) {
                     ForEach(["789", "456", "123"], id: \.self) { row in
-                        GridRow {
+                        HStack(spacing: spacing) {
                             ForEach(Array(row), id: \.self) { digit in
                                 characterKey(digit)
                             }
                         }
                     }
 
-                    GridRow {
-                        characterKey("0")
-                            .gridCellColumns(2)
+                    HStack(spacing: spacing) {
+                        characterKey("0", span: 2)
                         characterKey(".")
                     }
                 }
@@ -73,8 +73,8 @@ struct NumberPad: View {
                         }
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
                         .frame(height: keyHeight * 3 + spacing * 2)
+                        .containerRelativeFrame(.horizontal, count: 5, spacing: spacing)
                         .background(Color.accentColor)
                         .contentShape(Rectangle())
                     }
@@ -92,19 +92,20 @@ struct NumberPad: View {
         case operation
     }
 
-    private func characterKey(_ character: Character) -> some View {
-        key(Text(verbatim: String(character)), identifier: "key:" + String(character), style: .digit) {
+    private func characterKey(_ character: Character, span: Int = 1) -> some View {
+        key(Text(verbatim: String(character)), identifier: "key:" + String(character), style: .digit, span: span) {
             onKey(.character(character))
         }
     }
 
-    private func key(_ label: Text, identifier: String, style: KeyStyle, action: @escaping () -> Void) -> some View {
+    private func key(_ label: Text, identifier: String, style: KeyStyle, span: Int = 1,
+                     action: @escaping () -> Void) -> some View {
         Button(action: action) {
             label
                 .font(.title2.monospacedDigit())
                 .foregroundStyle(Color.primary)
-                .frame(maxWidth: .infinity)
                 .frame(height: keyHeight)
+                .containerRelativeFrame(.horizontal, count: 5, span: span, spacing: spacing)
                 .background(style == .digit ? Color(.systemBackground) : Color(.secondarySystemBackground))
                 .contentShape(Rectangle())
         }
