@@ -107,16 +107,17 @@ final class ScreenshotTests: XCTestCase {
         settle()
         shot("07-add-transaction")
 
-        // the keyboard's bar has + − × ÷ for working out a sum: 10 + 2.50
-        let amount = app.textFields["amount"]
-        try type("10", into: amount)
-        try tap(app.buttons["operator:+"], "the + key")
-        try type("2.50", into: amount)
+        // the amount has the app's own number pad, with + − × ÷ for working out a sum: 10 + 2.50
+        let amount = app.buttons["amount"]
+        try waitFor(app.buttons["pad_ok"], "the number pad")
+        try typeOnPad("10+2.50")
         try waitFor(app.staticTexts["amount_sum"], "the sum's result")
         settle()
         shot("07b-amount-sum")
-        try tap(app.buttons["operator:="], "the = key")
+        try tap(app.buttons["pad_ok"], "the = key")
         try waitForValue(of: amount, toContain: "12.50")
+        try tap(app.buttons["pad_ok"], "the OK key")
+        try waitForGone(app.buttons["pad_ok"], "the number pad closing")
         try choose("category", "Restaurants", screenshot: "08-choose-category")
         try choose("account", "Credit card", screenshot: "09-choose-account")
         try waitForValue(of: app.buttons["account"], toContain: "Credit card")
@@ -235,7 +236,7 @@ final class ScreenshotTests: XCTestCase {
         try openEditor(purchase)
         try waitFor(app.navigationBars["Review purchase"], "the review form")
         try waitForValue(of: app.buttons["merchant"], toContain: "Corner Cafe")
-        try waitForValue(of: app.textFields["amount"], toContain: "4.50")
+        try waitForValue(of: app.buttons["amount"], toContain: "4.50")
         settle()
         shot("22-review-purchase")
 
@@ -260,7 +261,7 @@ final class ScreenshotTests: XCTestCase {
 
     /// Opens the add or edit form, tapping again if the first tap was swallowed.
     private func openEditor(_ opener: XCUIElement) throws {
-        let amount = app.textFields["amount"]
+        let amount = app.buttons["amount"]
 
         for _ in 1...3 {
             try tap(opener, "add or edit")
@@ -278,7 +279,7 @@ final class ScreenshotTests: XCTestCase {
 
     private func closeEditor() throws {
         try tap(app.buttons["cancel_button"], "Cancel")
-        try waitForGone(app.textFields["amount"], "the form closing")
+        try waitForGone(app.buttons["amount"], "the form closing")
     }
 
     /// Opens a choice list from a form row, tapping again if it didn't open.
@@ -415,6 +416,14 @@ final class ScreenshotTests: XCTestCase {
         (element.value(forKey: "hasKeyboardFocus") as? Bool) ?? false
     }
 
+    /// Types digits, "." and + − × ÷ on the editor's number pad.
+    private func typeOnPad(_ text: String) throws {
+        for character in text {
+            let name = "+−×÷".contains(character) ? "operator:\(character)" : "key:\(character)"
+            try tap(app.buttons[name], "the \(character) key")
+        }
+    }
+
     private func type(_ text: String, into element: XCUIElement) throws {
         try waitFor(element, "text field")
 
@@ -449,6 +458,13 @@ final class ScreenshotTests: XCTestCase {
     }
 
     private func dismissKeyboard() {
+        let hidePad = app.buttons["pad_hide"]
+
+        if hidePad.exists && hidePad.isHittable {
+            hidePad.tap()
+            return
+        }
+
         guard app.keyboards.firstMatch.exists else {
             return
         }

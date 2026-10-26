@@ -606,7 +606,32 @@ final class TransactionEditModel: ObservableObject {
         return "= " + Formats.amount(cents, currency: currency)
     }
 
-    /// Adds + − × ÷ from the keyboard's bar, replacing an operator just typed so "12+" then × gives "12×".
+    /// A key of the amount fields' number pad, other than OK.
+    enum PadKey: Hashable {
+        /// a digit or "."
+        case character(Character)
+        /// + − × ÷
+        case operation(String)
+        case delete
+        case clear
+    }
+
+    func press(_ key: PadKey, destination: Bool) {
+        let text = destination ? destinationAmountText : amountText
+
+        switch key {
+        case .character(let character):
+            setAmountText(Formats.typing(character, after: text), destination: destination)
+        case .operation(let symbol):
+            appendOperator(symbol, destination: destination)
+        case .delete:
+            setAmountText(String(text.dropLast()), destination: destination)
+        case .clear:
+            setAmountText("", destination: destination)
+        }
+    }
+
+    /// Adds + − × ÷ from the number pad, replacing an operator just typed so "12+" then × gives "12×".
     func appendOperator(_ symbol: String, destination: Bool) {
         var text = destination ? destinationAmountText : amountText
 

@@ -63,6 +63,25 @@ final class FormatsTests: XCTestCase {
         XCTAssertFalse(Formats.isExpression("12.50"))
     }
 
+    func testTypingOnTheNumberPad() {
+        func type(_ keys: String, after text: String = "") -> String {
+            keys.reduce(text) { Formats.typing($1, after: $0) }
+        }
+
+        XCTAssertEqual(type("12.50"), "12.50")
+        XCTAssertEqual(type(".5"), "0.5")
+        XCTAssertEqual(type("05"), "5")
+        XCTAssertEqual(type("1.2.3"), "1.23")
+        XCTAssertEqual(type("1.234"), "1.23")
+        // each number of a sum has its own decimals and zero
+        XCTAssertEqual(type("3", after: "12.50+"), "12.50+3")
+        XCTAssertEqual(type(".5", after: "12.50×"), "12.50×0.5")
+        XCTAssertEqual(type("07", after: "4−"), "4−7")
+        XCTAssertEqual(type("5", after: "-0"), "-5")
+        XCTAssertEqual(type("1", after: "1,50"), "1,50")
+        XCTAssertEqual(type("9", after: "123456789012"), "123456789012")
+    }
+
     func testEditableAmount() {
         XCTAssertEqual(Formats.editableAmount(1250), "12.50")
         XCTAssertEqual(Formats.editableAmount(5), "0.05")

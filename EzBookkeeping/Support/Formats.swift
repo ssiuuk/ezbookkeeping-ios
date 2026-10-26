@@ -177,6 +177,32 @@ enum Formats {
         return (negative ? "-" : "") + String(whole) + "." + (fraction < 10 ? "0" : "") + String(fraction)
     }
 
+    /// The amount field after a digit or "." from the app's number pad. It goes on the number being typed, which keeps
+    /// at most two decimals and drops a lone leading zero; "." starts a number as "0.". A key that doesn't fit is ignored.
+    static func typing(_ key: Character, after text: String) -> String {
+        let current = String(text.reversed().prefix { !operators.contains($0) }.reversed())
+        let separator = current.firstIndex { $0 == "." || $0 == "," }
+
+        if key == "." {
+            return separator != nil ? text : text + (current.isEmpty ? "0." : ".")
+        }
+
+        guard key.isASCII, key.isNumber else {
+            return text
+        }
+
+        if let separator, current[current.index(after: separator)...].count >= 2 {
+            return text
+        }
+
+        if current == "0" {
+            return String(text.dropLast()) + String(key)
+        }
+
+        // more digits than any account holds
+        return current.count >= 12 ? text : text + String(key)
+    }
+
     // MARK: - Dates
 
     static func dayHeader(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {

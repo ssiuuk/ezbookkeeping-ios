@@ -42,8 +42,8 @@ struct TransactionEditForm: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var sheet: EditSheet?
-    @FocusState private var amountFocused: Bool
-    @FocusState private var destinationAmountFocused: Bool
+    /// The amount field the number pad types into, if it is showing.
+    @State private var pad: AmountField?
     @State private var photoItem: PhotosPickerItem?
     @State private var takingPhoto = false
     @State private var photoToRemove: TransactionEditModel.Photo?
@@ -76,8 +76,7 @@ struct TransactionEditForm: View {
                 ToolbarItem(placement: .confirmationAction) {
                     if model.webFallbackRoute == nil {
                         Button("Save") {
-                            amountFocused = false
-                            destinationAmountFocused = false
+                            closePad()
                             Task {
                                 await model.save()
                             }
@@ -87,30 +86,11 @@ struct TransactionEditForm: View {
                     }
                 }
 
-                // the decimal pad has no return key, so give the keyboard a way to close; in an amount field it
-                // also gets + − × ÷ for working out a sum, like the Android app's amount field
+                // a multi-line description has no key that closes the keyboard
                 ToolbarItemGroup(placement: .keyboard) {
-                    if amountFocused || destinationAmountFocused {
-                        ForEach(["+", "−", "×", "÷"], id: \.self) { symbol in
-                            Button(symbol) {
-                                model.appendOperator(symbol, destination: destinationAmountFocused)
-                            }
-                            .font(.title3.monospacedDigit())
-                            .accessibilityIdentifier("operator:" + symbol)
-                        }
-
-                        Button("=") {
-                            model.workOutSum(destination: destinationAmountFocused)
-                        }
-                        .font(.title3.monospacedDigit())
-                        .accessibilityIdentifier("operator:=")
-                    }
-
                     Spacer()
 
                     Button("Done") {
-                        amountFocused = false
-                        destinationAmountFocused = false
                         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     }
                     .accessibilityIdentifier("keyboard_done")
@@ -122,7 +102,7 @@ struct TransactionEditForm: View {
             await model.start()
 
             if !model.isEditing {
-                amountFocused = true
+                openPad(.amount)
             }
         }
         .onChange(of: model.finished) { _, finished in
@@ -232,6 +212,116 @@ struct TransactionEditForm: View {
     }
 
     private var form: some View {
+        ScrollViewReader { proxy in
+            amountForm
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if let pad {
+                        NumberPad(isSum: Formats.isExpression(amountText(pad)), onKey: { key in
+                            model.press(key, destination: pad == .destination)
+                        }, onDone: {
+                            if Formats.isExpression(amountText(pad)) {
+                                model.workOutSum(destination: pad == .destination)
+                            } else {
+                                closePad()
+                            }
+                        }, onHide: {
+                            closePad()
+                        })
+                        .transition(.move(edge: .bottom))
+                    }
+                }
+                .onChange(of: pad) { _, field in
+                    if let field {
+                        withAnimation {
+                            proxy.scrollTo(field, anchor: .center)
+                        }
+                    }
+                }
+        }
+        // another field's keyboard, or a list to choose from, takes the pad's place
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            closePad()
+        }
+        .onChange(of: sheet?.id) { _, which in
+            if which != nil {
+                closePad()
+            }
+        }
+    }
+
+    private enum AmountField: Hashable {
+        case amount
+        case destination
+    }
+
+    private func amountText(_ field: AmountField) -> String {
+        field == .destination ? model.destinationAmountText : model.amountText
+    }
+
+    /// Shows the number pad for an amount field, in place of the keyboard.
+    private func openPad(_ field: AmountField) {
+        if let pad, pad != field {
+            model.workOutSum(destination: pad == .destination)
+        }
+
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+
+        withAnimation(.easeOut(duration: 0.2)) {
+            pad = field
+        }
+    }
+
+    /// Hides the number pad, working out a sum left in its field.
+    private func closePad() {
+        guard let field = pad else {
+            return
+        }
+
+        model.workOutSum(destination: field == .destination)
+
+        withAnimation(.easeOut(duration: 0.2)) {
+            pad = nil
+        }
+    }
+
+    /// An amount field: tapping it shows the number pad.
+    private func amountButton(_ field: AmountField, placeholder: LocalizedStringKey, currency: String, large: Bool,
+                              identifier: String) -> some View {
+        let text = amountText(field)
+
+        return Button {
+            openPad(field)
+        } label: {
+            HStack {
+                Group {
+                    if text.isEmpty {
+                        Text(placeholder)
+                            .foregroundStyle(Color(.placeholderText))
+                    } else {
+                        Text(verbatim: text)
+                            .foregroundStyle(pad == field ? Color.accentColor : Color.primary)
+                    }
+                }
+                .font(large ? .title2.monospacedDigit() : .body.monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+
+                Spacer()
+
+                Text(currency)
+                    .foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(placeholder))
+        .accessibilityValue(Text(verbatim: text))
+        .accessibilityIdentifier(identifier)
+        .listRowBackground(pad == field ? Color.accentColor.opacity(0.12) : Color(.secondarySystemGroupedBackground))
+        .id(field)
+    }
+
+    private var amountForm: some View {
         Form {
             if model.canChooseBook {
                 Section {
@@ -254,24 +344,11 @@ struct TransactionEditForm: View {
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("type")
 
-                HStack {
-                    TextField("Amount", text: $model.amountText)
-                        .keyboardType(.decimalPad)
-                        .font(.title2.monospacedDigit())
-                        .focused($amountFocused)
-                        .accessibilityIdentifier("amount")
-                        .onChange(of: model.amountText) { _, _ in
-                            model.errors.remove(.amount)
-                        }
-                        .onChange(of: amountFocused) { _, focused in
-                            if !focused {
-                                model.workOutSum(destination: false)
-                            }
-                        }
-
-                    Text(model.account?.currency ?? "")
-                        .foregroundStyle(.secondary)
-                }
+                amountButton(.amount, placeholder: "Amount", currency: model.account?.currency ?? "", large: true,
+                             identifier: "amount")
+                    .onChange(of: model.amountText) { _, _ in
+                        model.errors.remove(.amount)
+                    }
 
                 if let sum = model.sumPreview(destination: false) {
                     Text(sum)
@@ -308,19 +385,8 @@ struct TransactionEditForm: View {
                 }
 
                 if model.showsDestinationAmount {
-                    HStack {
-                        TextField("Received amount", text: $model.destinationAmountText)
-                            .keyboardType(.decimalPad)
-                            .focused($destinationAmountFocused)
-                            .accessibilityIdentifier("destination_amount")
-                            .onChange(of: destinationAmountFocused) { _, focused in
-                                if !focused {
-                                    model.workOutSum(destination: true)
-                                }
-                            }
-                        Text(model.destinationAccount?.currency ?? "")
-                            .foregroundStyle(.secondary)
-                    }
+                    amountButton(.destination, placeholder: "Received amount",
+                                 currency: model.destinationAccount?.currency ?? "", large: false, identifier: "destination_amount")
 
                     if let sum = model.sumPreview(destination: true) {
                         Text(sum)
